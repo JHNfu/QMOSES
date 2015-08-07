@@ -2,7 +2,7 @@
 # Q-MOSES - A D-WAVE Mesh Partitioner
 ##########################################################
 # This is the staff for you to use, Moses.
-# Not developed by a good wind with good timing, or even
+# Not developed with a good wind and good timing, or even
 # divine intervention, but rather an understanding of
 # fluid dynamics, applied mathematics, quantum mechanics,
 # & computational complexity theory.
