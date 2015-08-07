@@ -6,7 +6,7 @@
 # divine intervention, but rather an understanding of
 # fluid dynamics, applied mathematics, quantum mechanics,
 # & computational complexity theory.
-##########################################################dfsfadfasdf
+##########################################################
 # Developed as part of the Honours Project by John Furness
 # With generous in-kind support provided by QxBranch and Shoal Group
 # August 2015
