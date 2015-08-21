@@ -131,49 +131,24 @@ def partition(adjlist,solver):
 # adjlist   - adjacency list of original graph
 # solver    - D-Wave Solver
 # OUTPUT list of nodes containing partition number
-# def recursive_bisection(N,adjlist,solver):
-#
-#     edgelist = adjlist_to_edgelist(adjlist)
-#     graph = nx.Graph()
-#     graph.add_edges_from(edgelist)
-#
-#     if N == 1:
-#         opt_sol = partition(adjlist,solver)
-#     elif N > 2:
-#         i = 2
-#         for i in N:
-#             opt_sol = partition(adjlist,solver)
-#
-#             part_A_nodes = []
-#             part_B_nodes = []
-#             for idx, s in enumerate(opt_sol):
-#                 if s == 1:
-#                     part_A_nodes.append(idx)
-#                 elif s == -1:
-#                     part_B_nodes.append(idx)
-#                 else:
-#                     print 'ERROR: geez Louise - ' \
-#                           'You got something other than -1 or 1 in your sol.'
-#
-#             # BUILDING EDGE LIST FOR COLOURED GRAPH
-#             graph_A = graph.subgraph(part_A_nodes)
-#             graph_B = graph.subgraph(part_B_nodes)
-#
-#             adjlist_A = graph_A.adjacency_list()
-#             adjlist_B = graph_B.adjacency_list()
-#
-#             opt_solA = partition(adjlist_A,solver)
-#             opt_solB = partition(adjlist_B,solver)
-#
-#
-#
-#     else:
-#         print 'ERROR: Enter value for N of one or greater'
-#
-#
-#
-#
-#     return opt_sol
+
+
+def recursive_bisection(n, adjlist, solver):
+    global counter
+    counter+=1
+    if n == 1:
+        opt_sol1 = partition(adjlist,solver)
+        opt_sol = [x+1 for x in opt_sol1]
+    elif n > 1:
+        opt_sol = partition(adjlist,solver)
+        [part_A_adj, part_B_adj] = split_adjlist(opt_sol, adjlist)
+        opt_sol_A = recursive_bisection(n-1,part_A_adj,solver)
+        opt_sol_B = recursive_bisection(n-1,part_B_adj,solver)
+    else:
+        print "I'm sorry, wrong input, ya goose."
+
+    return opt_sol
+
 
 def adjlist_to_edgelist(adjlist):
     j = 0
@@ -184,6 +159,37 @@ def adjlist_to_edgelist(adjlist):
         j += 1
     return edgelist
 
+# SPLIT
+# Returns two adjacency lists given the partition and one adjlist
+
+def split_adjlist(opt_sol,adjlist):
+
+    # Converting Adjacency List to a Graph
+    edgelist = adjlist_to_edgelist(adjlist)
+    graph = nx.Graph()
+    graph.add_edges_from(edgelist)
+
+    # Splitting Nodes from Optimal Solution
+    part_A_nodes = []
+    part_B_nodes = []
+    for idx, s in enumerate(opt_sol):
+        if s == 1:
+            part_A_nodes.append(idx)
+        elif s == -1 or s == 0:
+            part_B_nodes.append(idx)
+        else:
+            print 'ERROR: geez Louise - You got something other than -1 or ' \
+                  '1 in your sol.'
+
+    # Converting into Graph files from subgraphs
+    graphA = graph.subgraph(part_A_nodes)
+    graphB = graph.subgraph(part_B_nodes)
+
+    # Getting adjlist from each graph
+    adjlist_A = graphA.adjacency_list()
+    adjlist_B = graphB.adjacency_list()
+
+    return [adjlist_A, adjlist_B]
 
 # FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
 # Using graph partitioning, or graph colouring methods, even clique methods
