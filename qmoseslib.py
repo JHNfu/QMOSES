@@ -132,22 +132,59 @@ def partition(adjlist,solver):
 # solver    - D-Wave Solver
 # OUTPUT list of nodes containing partition number
 
-
 def recursive_bisection(n, adjlist, solver):
-    global counter
-    counter+=1
+    global opt_sol_final
+    global node_list
+
+    # GLOBAL COUNTER WORKS IF 'partition' outputs 0, 1 (as opposed to -1, 1)
+    # global counter
+    # try:
+    #     counter
+    # except NameError:
+    #     counter = 0
+    # else:
+    #     counter += 2
+
     if n == 1:
-        opt_sol1 = partition(adjlist,solver)
-        opt_sol = [x+1 for x in opt_sol1]
+        opt_sol1 = partition(adjlist, solver)
+        #opt_sol1 = [x+counter for x in opt_sol1]
+        # nodes = split_nodelist(opt_sol1, adjlist)
+        #
+        # try:
+        #     node_list
+        # except NameError:
+        #     node_list = []
+        #     node_list.append(nodes)
+        # else:
+        #     node_list.append(nodes)
+
+        try:
+            opt_sol_final
+        except NameError:
+            opt_sol_final = []
+            opt_sol_final.append(opt_sol1)
+        else:
+            opt_sol_final.append(opt_sol1)
+
     elif n > 1:
-        opt_sol = partition(adjlist,solver)
+        opt_sol = partition(adjlist, solver)
+
         [part_A_adj, part_B_adj] = split_adjlist(opt_sol, adjlist)
-        opt_sol_A = recursive_bisection(n-1,part_A_adj,solver)
-        opt_sol_B = recursive_bisection(n-1,part_B_adj,solver)
+        [part_A_nodes, part_B_nodes] = split_nodelist(opt_sol, adjlist)
+
+        reduce_adjlist(part_A_nodes, part_A_adj)
+        reduce_adjlist(part_B_nodes, part_B_adj)
+
+        recursive_bisection(n-1, part_A_adj, solver)
+        recursive_bisection(n-1, part_B_adj, solver)
+
+        # SO CURRENTLY ITS SUCCESSFULLY CALLING both recursive above,
+        # but overrides the list using the global list function as above
+
     else:
         print "I'm sorry, wrong input, ya goose."
 
-    return opt_sol
+    return opt_sol_final
 
 
 def adjlist_to_edgelist(adjlist):
@@ -178,7 +215,8 @@ def split_adjlist(opt_sol,adjlist):
         elif s == -1 or s == 0:
             part_B_nodes.append(idx)
         else:
-            print 'ERROR: geez Louise - You got something other than -1 or ' \
+            print 'ERROR in split_adjlist: geez Louise - You got something ' \
+                  'other than -1 or ' \
                   '1 in your sol.'
 
     # Converting into Graph files from subgraphs
@@ -190,6 +228,49 @@ def split_adjlist(opt_sol,adjlist):
     adjlist_B = graphB.adjacency_list()
 
     return [adjlist_A, adjlist_B]
+
+def split_nodelist(opt_sol,adjlist):
+
+    # Converting Adjacency List to a Graph
+    edgelist = adjlist_to_edgelist(adjlist)
+    graph = nx.Graph()
+    graph.add_edges_from(edgelist)
+
+    # Splitting Nodes from Optimal Solution
+    part_A_nodes = []
+    part_B_nodes = []
+    for idx, s in enumerate(opt_sol):
+        if s == 1:
+            part_A_nodes.append(idx)
+        elif s == -1 or s == 0:
+            part_B_nodes.append(idx)
+        else:
+            print 'ERROR in split_nodelist: geez Louise - You got something ' \
+                  'other than -1 or ' \
+                  '1 in your sol.'
+    return [part_A_nodes, part_B_nodes]
+
+def reduce_adjlist(nodes,adjlist):
+    j = 0
+    i = 0
+    k = 0
+    adjlistReturn = adjlist
+    for p in nodes:
+        k = 0
+        for x in adjlist:
+            for n in x:
+                if p == n:
+                    # print 'Adjlist K,J:', adjlist_A[k][j]
+                    # print 'Success: p:', p,  'n:', n, 'x:', x, 'i:', i,'k:', k, 'j:', j
+                    adjlistReturn[k][j] = i
+                    j += 1
+                else:
+                    # print 'WRONG: p:', p,  'n:', n, 'x:', x, 'i:', i,'k:', k, 'j:', j
+                    j += 1
+            j = 0
+            k += 1
+        i += 1
+    return adjlistReturn
 
 # FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
 # Using graph partitioning, or graph colouring methods, even clique methods
