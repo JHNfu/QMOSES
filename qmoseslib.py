@@ -37,6 +37,7 @@ import networkx as nx
 import numpy as nm
 import dwave_sapi
 from dwave_sapi import local_connection, find_embedding
+from collections import defaultdict
 
 # GRAPH PARTITION FUNCTION
 # Imports a variety of graph/mesh/adjacency files, you give the number of partitions,
@@ -133,7 +134,7 @@ def partition(adjlist,solver):
 # OUTPUT list of nodes containing partition number
 
 def recursive_bisection(n, adjlist, solver):
-    global opt_sol_final
+    global output
     global node_list
 
     # GLOBAL COUNTER WORKS IF 'partition' outputs 0, 1 (as opposed to -1, 1)
@@ -148,23 +149,16 @@ def recursive_bisection(n, adjlist, solver):
     if n == 1:
         opt_sol1 = partition(adjlist, solver)
         #opt_sol1 = [x+counter for x in opt_sol1]
-        # nodes = split_nodelist(opt_sol1, adjlist)
-        #
-        # try:
-        #     node_list
-        # except NameError:
-        #     node_list = []
-        #     node_list.append(nodes)
-        # else:
-        #     node_list.append(nodes)
-
+        nodes = split_nodelist(opt_sol1, adjlist)
         try:
-            opt_sol_final
+            output
         except NameError:
-            opt_sol_final = []
-            opt_sol_final.append(opt_sol1)
+            output = defaultdict(list)
+            output['optimal'].append([opt_sol1])
+            output['nodes'].append([nodes])
         else:
-            opt_sol_final.append(opt_sol1)
+            output['optimal'].append([opt_sol1])
+            output['nodes'].append([nodes])
 
     elif n > 1:
         opt_sol = partition(adjlist, solver)
@@ -184,7 +178,7 @@ def recursive_bisection(n, adjlist, solver):
     else:
         print "I'm sorry, wrong input, ya goose."
 
-    return opt_sol_final
+    return output
 
 
 def adjlist_to_edgelist(adjlist):
