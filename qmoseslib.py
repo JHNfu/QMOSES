@@ -38,6 +38,7 @@ import numpy as nm
 import dwave_sapi
 from dwave_sapi import local_connection, find_embedding
 from collections import defaultdict
+import copy as copy
 
 # GRAPH PARTITION FUNCTION
 # Imports a variety of graph/mesh/adjacency files, you give the number of partitions,
@@ -135,51 +136,88 @@ def partition(adjlist,solver):
 
 def recursive_bisection(n, adjlist, solver):
     global output
-    global node_list
+    global nodes_orig1
 
-    # GLOBAL COUNTER WORKS IF 'partition' outputs 0, 1 (as opposed to -1, 1)
-    # global counter
-    # try:
-    #     counter
-    # except NameError:
-    #     counter = 0
-    # else:
-    #     counter += 2
-
-    if n == 1:
+    if pow(2,n) > len(adjlist):
+        print pow(2,n), '>', adjlist
+        print 'Recursive Bisection Error: n is too large. The number of' \
+              ' partitions required is greater than the number of nodes.' \
+              ' \n  See Nuclear Fission, or "Splitting the Atom".'
+        exit()
+    elif n == 1:
         opt_sol1 = partition(adjlist, solver)
-        #opt_sol1 = [x+counter for x in opt_sol1]
-        nodes = split_nodelist(opt_sol1, adjlist)
+        [nodes_A, nodes_B] = split_nodelist_fromnodes(opt_sol1,nodes_orig1)
+        print "Child Nodes A:", nodes_A
+        print "Child Nodes B:", nodes_B
+
         try:
             output
         except NameError:
             output = defaultdict(list)
             output['optimal'].append([opt_sol1])
-            output['nodes'].append([nodes])
+            output['nodes'].append([nodes_A])
+            output['nodes'].append([nodes_B])
         else:
             output['optimal'].append([opt_sol1])
-            output['nodes'].append([nodes])
+            output['nodes'].append([nodes_A])
+            output['nodes'].append([nodes_B])
 
     elif n > 1:
-        opt_sol = partition(adjlist, solver)
+        print "Entered n>1 with n =", n
+        print "Adjlist:", adjlist
+        try:
+            nodes_orig1
+        except NameError:
+            print "Round One"
+        else:
+            adjlist_en = enlarge_adjlist(nodes_orig1,adjlist)
+            print "Adjlist Orig:", adjlist_en
+            print "Nodes Orig:", nodes_orig1
 
-        [part_A_adj, part_B_adj] = split_adjlist(opt_sol, adjlist)
-        [part_A_nodes, part_B_nodes] = split_nodelist(opt_sol, adjlist)
+
+        print "GOT TO PARTITION"
+        opt_sol = partition(adjlist, solver)
+        print "GOT THROUGH PARTITION"
+
+        try:
+            nodes_orig1
+        except NameError:
+            [part_A_adj, part_B_adj] = split_adjlist(opt_sol, adjlist)
+            [part_A_nodes, part_B_nodes] = split_nodelist(opt_sol, adjlist)
+            print "GOT TO ZERO"
+            print "A Nodes", part_A_nodes
+            print "B Nodes", part_B_nodes
+        else:
+            ### IN HERE, NON-REDUCE ADJLIST
+            #adjlist = enlarge_adjlist(nodes_orig1,adjlist)
+            [part_A_adj, part_B_adj] = split_adjlist_fromnodes(opt_sol,adjlist_en,nodes_orig1)
+            [part_A_nodes, part_B_nodes] = split_nodelist_fromnodes(opt_sol, nodes_orig1)
+            print "GOT TO TWO"
+            print "A Nodes", part_A_nodes
+            print "B Nodes", part_B_nodes
+
+        print "Adjlist A, wo reduction:", part_A_adj
 
         reduce_adjlist(part_A_nodes, part_A_adj)
         reduce_adjlist(part_B_nodes, part_B_adj)
 
+        nodes_orig1 = part_A_nodes
+        print "Nodes Original", nodes_orig1
+        print "Adjlist A, with reduction::", part_A_adj
+        print "n", n
         recursive_bisection(n-1, part_A_adj, solver)
+
+        nodes_orig1 = part_B_nodes
+        print "Nodes Original", nodes_orig1
+        print "Adjlist B:", part_B_adj
+        print "n", n
         recursive_bisection(n-1, part_B_adj, solver)
 
-        # SO CURRENTLY ITS SUCCESSFULLY CALLING both recursive above,
-        # but overrides the list using the global list function as above
-
     else:
-        print "I'm sorry, wrong input, ya goose."
+        print "Recursive Bisection Error: I'm sorry, wrong input, ya goose."
+        exit()
 
     return output
-
 
 def adjlist_to_edgelist(adjlist):
     j = 0
@@ -244,6 +282,49 @@ def split_nodelist(opt_sol,adjlist):
                   '1 in your sol.'
     return [part_A_nodes, part_B_nodes]
 
+def split_adjlist_fromnodes(opt_sol,adjlist,nodes_orig):
+
+    # Converting Adjacency List to a Graph
+    edgelist = adjlist_to_edgelist(adjlist)
+    graph = nx.Graph()
+    graph.add_edges_from(edgelist)
+
+    # Splitting Nodes from Optimal Solution
+    part_A_nodes = []
+    part_B_nodes = []
+    for idx, s in enumerate(opt_sol):
+        if s == 1:
+            part_A_nodes.append(nodes_orig[idx])
+        elif s == -1 or s == 0:
+            part_B_nodes.append(nodes_orig[idx])
+        else:
+            print 'ERROR in split_adjlist: geez Louise - You got something ' \
+                  'other than -1 or ' \
+                  '1 in your sol.'
+
+    # Converting into Graph files from subgraphs
+    graphA = graph.subgraph(part_A_nodes)
+    graphB = graph.subgraph(part_B_nodes)
+
+    # Getting adjlist from each graph
+    adjlist_A = graphA.adjacency_list()
+    adjlist_B = graphB.adjacency_list()
+
+    return [adjlist_A, adjlist_B]
+
+def split_nodelist_fromnodes(opt_sol,nodes_orig):
+    part_AA_nodes = []
+    part_BB_nodes = []
+    for idx, s in enumerate(opt_sol):
+        if s == 1:
+            part_AA_nodes.append(nodes_orig[idx])
+        elif s == -1 or s == 0:
+            part_BB_nodes.append(nodes_orig[idx])
+        else:
+            print 'Error: Function partition contains strange output.'
+    return [part_AA_nodes, part_BB_nodes]
+
+
 def reduce_adjlist(nodes,adjlist):
     j = 0
     i = 0
@@ -265,6 +346,37 @@ def reduce_adjlist(nodes,adjlist):
             k += 1
         i += 1
     return adjlistReturn
+
+def enlarge_adjlist(nodes,adjlist):
+    j = 0
+    i = 0
+    k = 0
+    # Because Python only creates a reference between variables
+    # Hence used copy module
+    adjlistReturn = copy.deepcopy(adjlist)
+    for p in nodes:
+        # print 'All the', k, 's should be', p
+        k = 0
+        for x in adjlist:
+            # print '\t', x
+            for n in x:
+                # print '\t', n
+                if n == i:
+                    # print 'ADDED:', n, "== Position", i
+                    # print 'Position', i, 'is a', p
+                    # print '=>', adjlist[k][j], "==", p
+                    adjlistReturn[k][j] = p
+                    j += 1
+                else:
+                    j += 1
+            j = 0
+            k += 1
+        i += 1
+        # print 'Adjlist after that round: \n', adjlistReturn
+        # print 'Original:\n', adjlist
+        # print "\n NEW ROUND \n \n"
+    return adjlistReturn
+
 
 # FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
 # Using graph partitioning, or graph colouring methods, even clique methods
