@@ -109,22 +109,15 @@ def partition(adjlist,solver):
     map(lambda sols: sols.append(1), answers['solutions'])
     opt_sol = sols[0]
 
-    part_A_nodes = []
-    part_B_nodes = []
-    for idx, s in enumerate(opt_sol):
-        if s == 1:
-            part_A_nodes.append(idx)
-        elif s == -1:
-            part_B_nodes.append(idx)
-        else:
-            print 'ERROR: geez Louise - ' \
-                  'You got something other than -1 or 1 in your sol.'
+    output = defaultdict(list)
+    output['opt_sol'] = opt_sol
 
-    # BUILDING EDGE LIST FOR COLOURED GRAPH
-    graph_A = graph.subgraph(part_A_nodes)
-    graph_B = graph.subgraph(part_B_nodes)
+    # Finding length of edge boundary
+    output['edge length'] = length_edgeboundary(output,opt_sol)
 
-    return opt_sol
+    output['num_qubits'] = num_qubits
+
+    return output
 
 # A RECURSIVE BISECTION SCHEME FOR 2^N PARTITIONS
 # Based on previously defined function, partition.
@@ -145,10 +138,26 @@ def recursive_bisection(n, adjlist, solver):
               ' \n  See Nuclear Fission, or "Splitting the Atom".'
         exit()
     elif n == 1:
-        opt_sol1 = partition(adjlist, solver)
-        [nodes_A, nodes_B] = split_nodelist_fromnodes(opt_sol1,nodes_orig1)
-        print "Child Nodes A:", nodes_A
-        print "Child Nodes B:", nodes_B
+        results = partition(adjlist, solver)
+        opt_sol1 = results['opt_sol']
+
+        [adjlist_A_orig, adjlist_B_orig] = split_adjlist(opt_sol1,adjlist)
+
+        try:
+            nodes_orig1
+        except NameError:
+            [nodes_A, nodes_B] = split_nodelist(opt_sol1,adjlist)
+            adjlist_A = adjlist_A_orig
+            adjlist_B = adjlist_B_orig
+        else:
+            [nodes_A, nodes_B] = split_nodelist_fromnodes(opt_sol1,nodes_orig1)
+            adjlist_A = enlarge_adjlist(nodes_orig1,adjlist_A_orig)
+            adjlist_B = enlarge_adjlist(nodes_orig1,adjlist_B_orig)
+        #print 'Adjlist A', adjlist_A
+        #print "Child Nodes A:", nodes_A
+        #print "Child Nodes B:", nodes_B
+
+        print "Number of Qubits:", results['num_qubits']
 
         try:
             output
@@ -157,60 +166,70 @@ def recursive_bisection(n, adjlist, solver):
             output['optimal'].append([opt_sol1])
             output['nodes'].append([nodes_A])
             output['nodes'].append([nodes_B])
+            output['edge length'].append(results['edge length'])
+            output['adjacency'].append(adjlist_A)
+            output['adjacency'].append(adjlist_B)
+            output['num_qubits'].append(results['num_qubits'])
         else:
             output['optimal'].append([opt_sol1])
             output['nodes'].append([nodes_A])
             output['nodes'].append([nodes_B])
+            output['edge length'].append(results['edge length'])
+            output['adjacency'].append(adjlist_A)
+            output['adjacency'].append(adjlist_B)
+            output['num_qubits'].append(results['num_qubits'])
 
     elif n > 1:
         print "Entered n>1 with n =", n
-        print "Adjlist:", adjlist
+        #print "Adjlist:", adjlist
         try:
             nodes_orig1
         except NameError:
             print "Round One"
         else:
             adjlist_en = enlarge_adjlist(nodes_orig1,adjlist)
-            print "Adjlist Orig:", adjlist_en
-            print "Nodes Orig:", nodes_orig1
+            #print "Adjlist Orig:", adjlist_en
+            #print "Nodes Orig:", nodes_orig1
 
 
-        print "GOT TO PARTITION"
-        opt_sol = partition(adjlist, solver)
-        print "GOT THROUGH PARTITION"
+        #print "GOT TO PARTITION"
+        results = partition(adjlist, solver)
+        opt_sol = results['opt_sol']
+        print "Number of Qubits", results['num_qubits']
+        #print "GOT THROUGH PARTITION"
 
         try:
             nodes_orig1
         except NameError:
             [part_A_adj, part_B_adj] = split_adjlist(opt_sol, adjlist)
             [part_A_nodes, part_B_nodes] = split_nodelist(opt_sol, adjlist)
-            print "GOT TO ZERO"
-            print "A Nodes", part_A_nodes
-            print "B Nodes", part_B_nodes
+            #print "GOT TO ZERO"
+            #print "A Nodes", part_A_nodes
+            #print "B Nodes", part_B_nodes
         else:
             ### IN HERE, NON-REDUCE ADJLIST
             #adjlist = enlarge_adjlist(nodes_orig1,adjlist)
             [part_A_adj, part_B_adj] = split_adjlist_fromnodes(opt_sol,adjlist_en,nodes_orig1)
             [part_A_nodes, part_B_nodes] = split_nodelist_fromnodes(opt_sol, nodes_orig1)
-            print "GOT TO TWO"
-            print "A Nodes", part_A_nodes
-            print "B Nodes", part_B_nodes
+            #print "GOT TO TWO"
+            #print "A Nodes", part_A_nodes
+            #print "B Nodes", part_B_nodes
 
-        print "Adjlist A, wo reduction:", part_A_adj
+        #print "Adjlist A, wo reduction:", part_A_adj
 
         reduce_adjlist(part_A_nodes, part_A_adj)
         reduce_adjlist(part_B_nodes, part_B_adj)
 
         nodes_orig1 = part_A_nodes
-        print "Nodes Original", nodes_orig1
-        print "Adjlist A, with reduction::", part_A_adj
-        print "n", n
+        #print "Nodes Original", nodes_orig1
+        #print "Adjlist A, with reduction::", part_A_adj
+        #print "n", n
         recursive_bisection(n-1, part_A_adj, solver)
 
         nodes_orig1 = part_B_nodes
-        print "Nodes Original", nodes_orig1
-        print "Adjlist B:", part_B_adj
-        print "n", n
+        #print "Nodes Original", nodes_orig1
+        #print "Adjlist B:", part_B_adj
+        #print "n", n
         recursive_bisection(n-1, part_B_adj, solver)
 
     else:
@@ -218,6 +237,23 @@ def recursive_bisection(n, adjlist, solver):
         exit()
 
     return output
+
+def length_edgeboundary(adjlist,opt_sol):
+    # Converting Adjacency List to a Graph
+    global_edgelist = adjlist_to_edgelist(adjlist)
+    graph = nx.Graph()
+    graph.add_edges_from(global_edgelist)
+
+    [part_A_nodes, part_B_nodes] = split_nodelist(opt_sol,adjlist)
+
+    graph_part_A = graph.subgraph(part_A_nodes)
+    graph_part_B = graph.subgraph(part_B_nodes)
+    edgelist_A = nx.edges(graph_part_A)
+    edgelist_B = nx.edges(graph_part_B)
+
+    no_edges = (len(global_edgelist)/2) - (len(edgelist_A) + len(edgelist_B))
+
+    return no_edges
 
 def adjlist_to_edgelist(adjlist):
     j = 0
@@ -283,7 +319,7 @@ def split_nodelist(opt_sol,adjlist):
     return [part_A_nodes, part_B_nodes]
 
 def split_adjlist_fromnodes(opt_sol,adjlist,nodes_orig):
-
+    """Splits the partition into two adjacency files based on a lit of original nodes"""
     # Converting Adjacency List to a Graph
     edgelist = adjlist_to_edgelist(adjlist)
     graph = nx.Graph()
@@ -377,6 +413,14 @@ def enlarge_adjlist(nodes,adjlist):
         # print "\n NEW ROUND \n \n"
     return adjlistReturn
 
+# Converts output from recursive bisection of qmoses to the pymetis output
+def qmosesnodelist_to_pymetisoutput(nodes_list):
+    my_list = [l[0] for l in nodes_list]
+    list1 = range(max(map(max, my_list))+1)
+    for idx, j in enumerate(my_list):
+        for i in j:
+            list1[i] = idx
+    return list1
 
 # FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
 # Using graph partitioning, or graph colouring methods, even clique methods
