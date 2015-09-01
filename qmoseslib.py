@@ -101,6 +101,8 @@ def partition(adjlist,solver):
     # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
     embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
 
+    print 'embeddings', embeddings
+
     # Sending problem to the solver
     embedding_solver = dwave_sapi.EmbeddingSolver(solver, embeddings)
     answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
@@ -421,6 +423,49 @@ def qmosesnodelist_to_pymetisoutput(nodes_list):
         for i in j:
             list1[i] = idx
     return list1
+
+# Converts MeshPy Triangle 2D elements list or array to adjacency list for
+# partitioning
+# Output: adjacency list
+def meshpytrielements_to_adjlist(meshpy_elements):
+    if type(meshpy_elements) != list:
+        meshpy_elements = meshpy_elements.tolist()
+    elif type(meshpy_elements) == list:
+        pass
+    else:
+        print 'Weird Input Try again.'
+        exit()
+    # Dimensions
+    dimensions = 2
+    # Creates an empty adjacency list
+    adjlist = [[] for x in xrange(len(meshpy_elements))]
+    globallistno = 0
+    for list1 in meshpy_elements:
+        count = [[] for x in xrange(len(meshpy_elements))]
+        #print 'Entering Global List No.:', globallistno
+        for element1 in list1:
+            sublistno = 0
+            #print 'Element One:', element1
+            for list_onwards in meshpy_elements:
+                #print '\tExploring Sub-List No.:', sublistno
+                for element2 in list_onwards:
+                    #print '\t\tElement Two:', element2
+                    if element2 == element1:
+                        #print '\t\t\tYou BLOODY RIPPER: at', globallistno, sublistno
+                        if globallistno == sublistno:
+                            continue
+                        elif globallistno != sublistno:
+                            if count[sublistno] == [1]:
+                                count[sublistno][0] += 1
+                            else:
+                                count[sublistno].append(1)
+                            #print '\t\t\t Count at', sublistno, 'is now:', count[sublistno]
+                            if count[sublistno][0] >= dimensions:
+                                adjlist[globallistno].append(sublistno)
+                                #print '\t\t\t Added count'
+                sublistno += 1
+        globallistno += 1
+    return adjlist
 
 # FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
 # Using graph partitioning, or graph colouring methods, even clique methods
