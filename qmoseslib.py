@@ -133,6 +133,8 @@ def recursive_bisection(n, adjlist, solver):
     global output
     global nodes_orig1
 
+    print 'Partitioning', len(adjlist), 'elements...'
+
     if pow(2,n) > len(adjlist):
         print pow(2,n), '>', adjlist
         print 'Recursive Bisection Error: n is too large. The number of' \
@@ -424,8 +426,8 @@ def qmosesnodelist_to_pymetisoutput(nodes_list):
             list1[i] = idx
     return list1
 
-# Converts MeshPy Triangle 2D elements list or array to adjacency list for
-# partitioning
+# Converts MeshPy Triangle 2D or Tetrahedral 3D elements list or array to
+# adjacency list for partitioning
 # Output: adjacency list
 def meshpytrielements_to_adjlist(meshpy_elements):
     if type(meshpy_elements) != list:
@@ -435,8 +437,8 @@ def meshpytrielements_to_adjlist(meshpy_elements):
     else:
         print 'Weird Input Try again.'
         exit()
-    # Dimensions
-    dimensions = 2
+    # Dimensions: checking if triangular, or tetrahedral
+    dimensions = len(meshpy_elements[0])-1
     # Creates an empty adjacency list
     adjlist = [[] for x in xrange(len(meshpy_elements))]
     globallistno = 0
@@ -455,7 +457,7 @@ def meshpytrielements_to_adjlist(meshpy_elements):
                         if globallistno == sublistno:
                             continue
                         elif globallistno != sublistno:
-                            if count[sublistno] == [1]:
+                            if count[sublistno] >= [1]:
                                 count[sublistno][0] += 1
                             else:
                                 count[sublistno].append(1)
