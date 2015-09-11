@@ -39,6 +39,225 @@ import dwave_sapi
 from dwave_sapi import local_connection, find_embedding
 from collections import defaultdict
 import copy as copy
+import subprocess
+import os
+from sympy import *
+
+# GRAPH COLOURING FUNCTION
+def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_address = None):
+    no_vert = len(adjlist)  # Number of vertices
+
+    print 'FUNCTION COLOURGRAPH Beginning...'
+    print 'Number of nodes:', no_vert
+    print 'Number of colours:', no_col
+    print 'Therefore need %s qubits.\n' % (no_vert*no_col)
+
+    Aye = 1
+    Bee = 1
+
+    A = Symbol('A')
+    B = Symbol('B')
+
+    x = symbols('x(1:%d\,1:%d)' % (((no_vert + 1) , (no_col + 1))))
+
+    H1 = 0
+    term = 1
+    for v in range(no_vert):
+        for i in range(no_col):
+            v += 1 # FIX THIS!
+            i += 1 # FIX THIS!
+            term -= x[((v - 1) * no_col) + i - 1]
+            v -= 1 # FIX THIS!
+            i -= 1 # FIX THIS!
+        term = term**2
+        H1 += term
+        term = 1
+    H1 = A * H1
+
+    edgelist = adjlist_to_edgelist(adjlist)
+
+    # removing duplicate edges
+    for edge in edgelist:
+        if (edge[1],edge[0]) in edgelist:
+            edgelist.remove((edge[1],edge[0]))
+
+    H2 = 0
+    for edge in edgelist:
+        for colour in range(no_col):
+            H2 += x[((edge[0] - 1) * no_col) + colour - 1]*x[((edge[1] - 1) * no_col) + colour - 1]
+    H2 = (B)*H2 # Dividing by 2 as edgelist defines edges twice
+
+    #print 'H1:', H1
+    #print 'H2:', H2
+    H = H1 + H2
+
+    H = H.subs('A', Aye)
+    H = H.subs('B', Bee)
+
+    # print 'Hamiltonian (before subs):', H
+
+    # Accounting for Degeneracy
+
+    H = H.subs(x[0], 1)
+    for s in range(no_col):
+        H = H.subs(x[s],0)
+
+    # print 'Hamiltonian (after subs):', H
+
+    H = H.expand(H)
+
+    print 'Final Hamiltonian:', H
+
+    Q = dict()
+    for idx in range(len(x)):
+        for jdx in range(len(x)):
+            Q[(idx, jdx)] = 0
+
+    for idx in range(len(x)):
+        for jdx in range(len(x)):
+            if idx != jdx:
+                Q[(idx, jdx)] = round(H.coeff(x[idx]).coeff(x[jdx]),2)
+                Q[(idx, jdx)] = round(H.coeff(x[idx]*x[jdx]),2)
+            else:
+                E = H.coeff(1*x[idx])
+                #Q[(idx,jdx)] = round(H.coeff(x[idx]**2 + H.coeff(x[idx])),2)
+                Q[(idx,jdx)] = round((H.coeff(x[idx]**2) - E.coeff(-1)),2)
+
+    # Creating a Q accounting for degeneracy
+    #print '\nQ:'
+    Qdeg = dict()
+    for idx in range(no_col, no_vert*no_col):
+        #print ''
+        for jdx in range(no_col, no_vert*no_col):
+            #print '%.f' % (Q[(idx,jdx)]),
+            Qdeg[(idx - no_col,jdx - no_col)] = (Q[(idx,jdx)])
+
+    (h, J, offset) = dwave_sapi.qubo_to_ising(Qdeg)
+
+    #print 'H vaules', h
+    #print 'J values', J
+
+    num_reads = 1000
+
+    if solver_type == 'dwave':
+        "Using dwave solver for Graph Colouring problem..."
+        ## PRINT ERROR IF SOLVER ISN'T DEFINED
+        qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
+        q_size = dwave_solver.properties["num_qubits"]
+
+        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
+        embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
+
+        # Sending problem to the solver
+        embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+        sols = answers['solutions']
+
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+        sols = answers['solutions']
+        print answers['energies']
+        # Adding Degeneracy Back In
+        Degenerate = [1] + [-1]*(no_col-1)
+        opt_sol = Degenerate + sols[0]
+
+    elif solver_type == 'isakov':
+        output = defaultdict(list)
+        print "Using Isakov to solve Graph Colouring problem..."
+        # PRINT ERROR IF SOLVER ADDRESS ISN'T DEFINED
+        # PRINT LATTICE FILE
+
+        if os.path.isfile("ColourGraph.lattice") == 1:
+            os.remove("ColourGraph.lattice")
+
+        file = open("ColourGraph.lattice", "w")
+        file.write("ColourGraph Function File")
+
+        # Printing h values to Lattice File
+        for idx, element in enumerate(h):
+            file.write("\n%s %s %s" % (idx, idx, element))
+
+        # Printing J values to Lattice File
+        #print 'J values:',
+        for idx in range(len(h)):
+            #print ' '
+            for jdx in range(len(h)):
+                if (idx, jdx) in J:
+                    file.write("\n%s %s %s" % (idx, jdx, J[(idx, jdx)]))
+                # if i >= j:
+                #     continue
+                # else:
+                #     file.write("\n%s %s %s" % (i, j, J[(i,j)]))
+                #     #file.write("\n%s %s %s" % (j, i, J_dict[(i,j)]))
+
+        file.close()
+
+        lattice_file = "ColourGraph.lattice"
+
+        args = [isakov_address, "-l", lattice_file, "-s", "100", "-r", "1000"]
+        #subprocess.call(args)# Uncomment to run again and print output
+        popen = subprocess.Popen(args, stdout=subprocess.PIPE)
+        #popen.wait()
+        isakov_output = popen.stdout.read()
+        isakov_output = isakov_output.splitlines()
+
+        solution_listoflist = []
+        for s in isakov_output:
+            solution_listoflist.append(s.split())
+
+        for s in solution_listoflist:
+            output['energy'].append(float(s[0]))
+            output['occurences'].append(int(float(s[1])))
+            output['plusorminus'].append(s[2])
+
+        for element in output['plusorminus']:
+            conversion = []
+            for spin in element:
+                if spin == '+':
+                    conversion.append(1)
+                elif spin == '-':
+                    conversion.append(-1)
+                else:
+                    print "It's output something other than +, -"
+            output['solutions'].append(conversion)
+
+        sols = output['solutions']
+        print 'SOLS', sols
+        print J
+
+        # Adding Degeneracy Back In
+        Degenerate = [1] + [-1]*(no_col-1)
+        opt_sol = Degenerate + sols[0]
+
+    else:
+        print "COLOUR GRAPH ERROR: Solver type not recognised. Try dwave or isakov"
+
+    print 'Convert to nice format from opt_sol =', opt_sol
+    final_solution = []
+    incorrect = 0
+    for nodes in range(no_vert):
+        colour_sols = []
+        for idx in range(nodes*no_col,(nodes*no_col)+no_col):
+            colour_sols.append(opt_sol[idx])
+            # if opt_sol[idx] == 1:
+            #     nice_output.append(idx - nodes*no_col + 1)
+
+        if 1 not in colour_sols:
+            final_solution.append(0)
+            incorrect += 1
+
+        else:
+            for idx in range(nodes*no_col,(nodes*no_col)+no_col):
+                if opt_sol[idx] == 1:
+                    final_solution.append(idx - nodes*no_col + 1)
+
+    if incorrect > 0:
+        print 'Some nodes were not worthy of a colour.\n' \
+              'ie. There is not a perfect solution to this problem or ' \
+              'the solver did not find one.'
+
+    return final_solution
+
+
 
 # GRAPH PARTITION FUNCTION
 # Imports a variety of graph/mesh/adjacency files, you give the number of partitions,
@@ -50,7 +269,7 @@ import copy as copy
 # Function Splits Adjacency List Into Two Parts Based on the Hamiltonian
 # Requires solver information
 
-def partition(adjlist,solver):
+def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = None):
     edgelist = adjlist_to_edgelist(adjlist)
     graph = nx.Graph()
     graph.add_edges_from(edgelist)
@@ -70,10 +289,6 @@ def partition(adjlist,solver):
 
     num_reads = 1000 # number of reads from D-Wave
     annealing_time  = 20
-
-    # Collecting information on the available Chimera graph and number of qubits of the solver
-    qubits = dwave_sapi.get_hardware_adjacency(solver)
-    q_size = solver.properties["num_qubits"]
 
     J = dict()
     # Set up the default couplings to have a value of 2
@@ -98,26 +313,101 @@ def partition(adjlist,solver):
             if i >= j:
                 J[(i, j)] = 0.0
 
-    # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
-    embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
-
-    print 'embeddings', embeddings
-
-    # Sending problem to the solver
-    embedding_solver = dwave_sapi.EmbeddingSolver(solver, embeddings)
-    answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
-    sols = answers['solutions']
-
-    map(lambda sols: sols.append(1), answers['solutions'])
-    opt_sol = sols[0]
-
     output = defaultdict(list)
-    output['opt_sol'] = opt_sol
+    output['num_qubits'] = num_qubits
+
+    if solver_type == 'dwave':
+        ## PRINT ERROR IF SOLVER ISN'T DEFINED
+        qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
+        q_size = dwave_solver.properties["num_qubits"]
+
+        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
+        embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
+
+        # Sending problem to the solver
+        embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+        sols = answers['solutions']
+
+        map(lambda sols: sols.append(1), answers['solutions'])
+        opt_sol = sols[0]
+
+        output['opt_sol'] = opt_sol
+
+        print "Optimum Solution:", opt_sol
+        print "Type:", type(opt_sol)
+
+        print "HERE TIS!", output
+
+    elif solver_type == 'isakov':
+        print "fine! I'll do Isakov"
+        # PRINT ERROR IF SOLVER ADDRESS ISN'T DEFINED
+        # PRINT LATTICE FILE
+
+        if os.path.isfile("PartitionLattice.lattice") == 1:
+            os.remove("PartitionLattice.lattice")
+
+        file = open("PartitionLattice.lattice", "w")
+        file.write("Partition Function File")
+
+        # Printing h values to Lattice File
+        for idx, element in enumerate(h):
+            file.write("\n%s %s %s" % (idx, idx, element))
+
+        # Printing J values to Lattice File
+        #print 'J values:',
+        for i in range(len(h)):
+            #print ' '
+            for j in range(len(h)):
+                if i >= j:
+                    continue
+                else:
+                    file.write("\n%s %s %s" % (i, j, J[(i,j)]))
+                    #file.write("\n%s %s %s" % (j, i, J_dict[(i,j)]))
+
+        file.close()
+
+        lattice_file = "PartitionLattice.lattice"
+
+        args = [isakov_address, "-l", lattice_file, "-s", "200", "-r", "1000"]
+        #subprocess.call(args)
+        popen = subprocess.Popen(args, stdout=subprocess.PIPE)
+        #popen.wait()
+        isakov_output = popen.stdout.read()
+        isakov_output = isakov_output.splitlines()
+
+        solution_listoflist = []
+        for s in isakov_output:
+            solution_listoflist.append(s.split())
+
+        for s in solution_listoflist:
+            output['energy'].append(float(s[0]))
+            output['occurences'].append(int(float(s[1])))
+            output['plusorminus'].append(s[2])
+
+        for element in output['plusorminus']:
+            conversion = []
+            for spin in element:
+                if spin == '+':
+                    conversion.append(1)
+                elif spin == '-':
+                    conversion.append(-1)
+                else:
+                    print "It's output something other than +, -"
+            output['solutions'].append(conversion)
+
+
+        # YOU'RE NOT ADDING THE EXTRA QUBIT YA TWAT
+        sols = output['solutions']
+        map(lambda sols: sols.append(1), output['solutions'])
+        opt_sol = sols[0]
+        output['opt_sol'] = opt_sol
+
+    else:
+        print "PARTITION ERROR: Solver type not recognised. Try DWave or Isakov"
 
     # Finding length of edge boundary
     output['edge length'] = length_edgeboundary(output,opt_sol)
-
-    output['num_qubits'] = num_qubits
 
     return output
 
@@ -129,7 +419,7 @@ def partition(adjlist,solver):
 # solver    - D-Wave Solver
 # OUTPUT list of nodes containing partition number
 
-def recursive_bisection(n, adjlist, solver):
+def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
     global output
     global nodes_orig1
 
@@ -142,7 +432,7 @@ def recursive_bisection(n, adjlist, solver):
               ' \n  See Nuclear Fission, or "Splitting the Atom".'
         exit()
     elif n == 1:
-        results = partition(adjlist, solver)
+        results = partition(adjlist, solver_type = solver_type, dwave_solver = dwave_solver, isakov_address = isakov_address)
         opt_sol1 = results['opt_sol']
 
         [adjlist_A_orig, adjlist_B_orig] = split_adjlist(opt_sol1,adjlist)
@@ -195,9 +485,11 @@ def recursive_bisection(n, adjlist, solver):
             #print "Adjlist Orig:", adjlist_en
             #print "Nodes Orig:", nodes_orig1
 
-
         #print "GOT TO PARTITION"
-        results = partition(adjlist, solver)
+        results = partition(adjlist, solver_type = solver_type,
+                            dwave_solver = dwave_solver,
+                            isakov_address = isakov_address)
+
         opt_sol = results['opt_sol']
         print "Number of Qubits", results['num_qubits']
         #print "GOT THROUGH PARTITION"
@@ -228,13 +520,17 @@ def recursive_bisection(n, adjlist, solver):
         #print "Nodes Original", nodes_orig1
         #print "Adjlist A, with reduction::", part_A_adj
         #print "n", n
-        recursive_bisection(n-1, part_A_adj, solver)
+        recursive_bisection(n-1, part_A_adj, solver_type = solver_type,
+                            dwave_solver = dwave_solver,
+                            isakov_address = isakov_address)
 
         nodes_orig1 = part_B_nodes
         #print "Nodes Original", nodes_orig1
         #print "Adjlist B:", part_B_adj
         #print "n", n
-        recursive_bisection(n-1, part_B_adj, solver)
+        recursive_bisection(n-1, part_B_adj,  solver_type = solver_type,
+                            dwave_solver = dwave_solver,
+                            isakov_address = isakov_address)
 
     else:
         print "Recursive Bisection Error: I'm sorry, wrong input, ya goose."
