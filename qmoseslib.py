@@ -273,16 +273,23 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
     edgelist = adjlist_to_edgelist(adjlist)
     graph = nx.Graph()
     graph.add_edges_from(edgelist)
+    nodes = range(len(adjlist))
+    graph.add_nodes_from(nodes)
 
     max_degree = max(graph.degree().values())
-    test_size = len(graph.nodes())
+    #test_size = len(graph.nodes())
     num_vertices = len(adjlist)
+    test_size = num_vertices
 
     # Calculating A, assuming B = 1, ensuring a minimum of 1
     A = max(min(2*max_degree, num_vertices) / 8.0, 1)
 
     # Number of Qubits Required
     num_qubits = test_size - 1 # Minus 1 for degeneracy
+
+    #print 'Test Size:', test_size
+    #print 'Num Vertices:', num_vertices
+    #print 'Num QUBITS:', num_qubits
 
     # Bias for each qubit
     h = [2*A] * num_qubits
@@ -301,8 +308,14 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
         # Deal with degeneracy by ignoring the last spin and setting it
         # up as a bias instead.
         if i == num_qubits:
+            # print 'A', A
+            # print 'j', j
+            # print len(h)
             h[j] = 2*A-0.5 # For degeneracy
         elif j == num_qubits:
+            # print 'A', A
+            # print 'i', i
+            # print len(h)
             h[i] = 2*A-0.5 # For degeneracy
         else:
             J[(i, j)] = 2*A-0.5
@@ -317,6 +330,7 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
     output['num_qubits'] = num_qubits
 
     if solver_type == 'dwave':
+        print "\nSolving Partition with D-Wave Local Solver"
         ## PRINT ERROR IF SOLVER ISN'T DEFINED
         qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
         q_size = dwave_solver.properties["num_qubits"]
@@ -334,13 +348,8 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
 
         output['opt_sol'] = opt_sol
 
-        print "Optimum Solution:", opt_sol
-        print "Type:", type(opt_sol)
-
-        print "HERE TIS!", output
-
     elif solver_type == 'isakov':
-        print "fine! I'll do Isakov"
+        print "Solving Partition with Isakov Solver"
         # PRINT ERROR IF SOLVER ADDRESS ISN'T DEFINED
         # PRINT LATTICE FILE
 
@@ -426,25 +435,40 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
     print 'Partitioning', len(adjlist), 'elements...'
 
     if pow(2,n) > len(adjlist):
-        print pow(2,n), '>', adjlist
         print 'Recursive Bisection Error: n is too large. The number of' \
-              ' partitions required is greater than the number of nodes.' \
-              ' \n  See Nuclear Fission, or "Splitting the Atom".'
+              ' partitions required is greater than the number of nodes.'
+        print '\t%s partitions is greater than %s nodes' % (pow(2, n), len(adjlist))
+        print '\tSee Nuclear Fission, or "Splitting the Atom".'
+
         exit()
     elif n == 1:
         results = partition(adjlist, solver_type = solver_type, dwave_solver = dwave_solver, isakov_address = isakov_address)
         opt_sol1 = results['opt_sol']
+        #print '\tOPTSOL len %s and: %s' % (len(opt_sol1), opt_sol1)
+        #print '\tAdjlist len %s before partition: %s' % (len(adjlist), adjlist)
 
         [adjlist_A_orig, adjlist_B_orig] = split_adjlist(opt_sol1,adjlist)
+
+        #print 'BEGIN adjlist investigation'
+        #print 'Length of optsol = %s, Length of Adjlist = %s.' % (len(opt_sol1), len(adjlist))
+        #print 'Length of both adjlists added:', len(adjlist_A_orig) + len(adjlist_B_orig)
 
         try:
             nodes_orig1
         except NameError:
             [nodes_A, nodes_B] = split_nodelist(opt_sol1,adjlist)
+            #print "NODES ORIGINAL, NOT TRICKED YA hahahaha"
+            #print 'Nodes original adjlist', adjlist
+            #print 'opt_sol', opt_sol1
             adjlist_A = adjlist_A_orig
             adjlist_B = adjlist_B_orig
         else:
             [nodes_A, nodes_B] = split_nodelist_fromnodes(opt_sol1,nodes_orig1)
+            #print "Nodes Original:", nodes_orig1
+            #print 'Nodes original adjlist', adjlist
+            #print '\t\topt_sol', opt_sol1
+            #print '\t\t', len(nodes_A) + len(nodes_B)
+            #print "\t\t\t YEAH I WENT THROUGH THE BIT YA INTERESTED IN"
             adjlist_A = enlarge_adjlist(nodes_orig1,adjlist_A_orig)
             adjlist_B = enlarge_adjlist(nodes_orig1,adjlist_B_orig)
         #print 'Adjlist A', adjlist_A
@@ -460,6 +484,9 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
             output['optimal'].append([opt_sol1])
             output['nodes'].append([nodes_A])
             output['nodes'].append([nodes_B])
+            #print '\tNodes A %s and Nodes B%s' % (nodes_A, nodes_B)
+            #print '\tlenoptso %s and %s' % (len(opt_sol1), opt_sol1)
+            #print len(nodes_A) + len(nodes_B)
             output['edge length'].append(results['edge length'])
             output['adjacency'].append(adjlist_A)
             output['adjacency'].append(adjlist_B)
@@ -468,6 +495,12 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
             output['optimal'].append([opt_sol1])
             output['nodes'].append([nodes_A])
             output['nodes'].append([nodes_B])
+            #print 'ELSEEEEEE:'
+            #print 'Nodes A %s and Nodes B%s' % (nodes_A, nodes_B)
+            #print '\tlenoptso %s and %s' % (len(opt_sol1), opt_sol1)
+            #print '\t', len(nodes_A) + len(nodes_B)
+            #print '\tlength of nodes orig', len(nodes_orig1)
+            #print '\t nodes original', nodes_orig1
             output['edge length'].append(results['edge length'])
             output['adjacency'].append(adjlist_A)
             output['adjacency'].append(adjlist_B)
@@ -479,7 +512,7 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
         try:
             nodes_orig1
         except NameError:
-            print "Round One"
+            print "Recursive Bisection: Round One"
         else:
             adjlist_en = enlarge_adjlist(nodes_orig1,adjlist)
             #print "Adjlist Orig:", adjlist_en
@@ -505,8 +538,16 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
         else:
             ### IN HERE, NON-REDUCE ADJLIST
             #adjlist = enlarge_adjlist(nodes_orig1,adjlist)
+            #print 'Nodes Original:', nodes_orig1
+            #print '\t\t\t ADJLIST FROM NODES DATA:'
+            #print adjlist_en
+            #print opt_sol
+            #print nodes_orig1
             [part_A_adj, part_B_adj] = split_adjlist_fromnodes(opt_sol,adjlist_en,nodes_orig1)
             [part_A_nodes, part_B_nodes] = split_nodelist_fromnodes(opt_sol, nodes_orig1)
+            #print '\tOpt_sol length = %s and: %s' % (len(opt_sol),opt_sol)
+            #print '\tLength A + B = ', len(part_A_nodes) + len(part_B_nodes)
+            #print '\tLength nodes_orig:', len(nodes_orig1)
             #print "GOT TO TWO"
             #print "A Nodes", part_A_nodes
             #print "B Nodes", part_B_nodes
@@ -520,17 +561,13 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
         #print "Nodes Original", nodes_orig1
         #print "Adjlist A, with reduction::", part_A_adj
         #print "n", n
-        recursive_bisection(n-1, part_A_adj, solver_type = solver_type,
-                            dwave_solver = dwave_solver,
-                            isakov_address = isakov_address)
+        recursive_bisection(n-1, part_A_adj, solver_type = solver_type, dwave_solver = dwave_solver, isakov_address = isakov_address)
 
         nodes_orig1 = part_B_nodes
         #print "Nodes Original", nodes_orig1
         #print "Adjlist B:", part_B_adj
         #print "n", n
-        recursive_bisection(n-1, part_B_adj,  solver_type = solver_type,
-                            dwave_solver = dwave_solver,
-                            isakov_address = isakov_address)
+        recursive_bisection(n-1, part_B_adj, solver_type = solver_type, dwave_solver = dwave_solver, isakov_address = isakov_address)
 
     else:
         print "Recursive Bisection Error: I'm sorry, wrong input, ya goose."
