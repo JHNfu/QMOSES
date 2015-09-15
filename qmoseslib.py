@@ -802,6 +802,26 @@ def meshpytrielements_to_adjlist(meshpy_elements):
         globallistno += 1
     return adjlist
 
+# CREATES DICTIONARY WITH NUMBER OF EDGES BETWEEN NODES
+# GOES THROUGH NODES IN EACH PARTITION AND COMPARES WITH THE NEXT
+# ADDITIONAL OUTPUT is TOTAL_EDGES
+def num_edges_per_partition(list_of_lists_of_nodes,edgelist, num_parts):
+    edge_results = dict()   # (0,1) = 28, (0,2) = 20 (1,0) =
+    total_edges = 0
+    for part_1 in range(num_parts):
+        for part_2 in range(num_parts):
+            no_edges = 0
+            if part_1 != part_2:
+                for node_A in list_of_lists_of_nodes[part_1]:
+                    for node_B in list_of_lists_of_nodes[part_2]:
+                        if (node_A, node_B) in edgelist:
+                            no_edges += 1
+                        elif (node_B, node_A) in edgelist:
+                            no_edges += 1
+                edge_results[(part_1,part_2)] = no_edges
+                total_edges += no_edges
+    return (edge_results, total_edges)
+
 # FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
 # Using graph partitioning, or graph colouring methods, even clique methods
 
