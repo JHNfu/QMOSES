@@ -1,8 +1,8 @@
-####################################
+################################################################
 # MESH PARTITIONING HAMILTONIAN
 # Generates symbolic function for Mesh Partitioning Hamiltonian.
 # John Furness, September 2015
-####################################
+################################################################
 from __future__ import division
 from __future__ import absolute_import
 import meshpy.triangle as triangle
@@ -16,7 +16,6 @@ __author__ = 'John Furness'
 # PROBLEM VARIABLES
 #####################################
 no_part = 3
-
 #####################################
 # GENERATING A MESH
 #####################################

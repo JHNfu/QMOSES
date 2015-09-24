@@ -106,7 +106,7 @@ def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_a
 
     H = H.expand(H)
 
-    print 'Final Hamiltonian:', H
+    #print 'Final Hamiltonian:', H
 
     Q = dict()
     for idx in range(len(x)):
@@ -155,7 +155,7 @@ def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_a
 
         answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
         sols = answers['solutions']
-        print answers['energies']
+        #print answers['energies']
         # Adding Degeneracy Back In
         Degenerate = [1] + [-1]*(no_col-1)
         opt_sol = Degenerate + sols[0]
@@ -221,8 +221,8 @@ def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_a
             output['solutions'].append(conversion)
 
         sols = output['solutions']
-        print 'SOLS', sols
-        print J
+        #print 'SOLS', sols
+        #print J
 
         # Adding Degeneracy Back In
         Degenerate = [1] + [-1]*(no_col-1)
