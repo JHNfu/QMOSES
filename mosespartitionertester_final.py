@@ -83,28 +83,31 @@ test_num = 1
 for num_nodes in range(min_nodes,max_nodes+1):
     for num_parts in range(min_parts,max_parts+1):
 
+        solver = results[(num_nodes,num_parts)]['solver']
+
         print '==============================================================='
         print 'POST PROCESSING %s OF %s TOTAL TESTS' % (test_num, totaltests)
         print '==============================================================='
         print 'TEST PARAMETERS:'
         print 'Elements in Mesh: %s, Number of Partitions: %s' % (num_nodes, num_parts)
-        print 'Running the %s solver' % type_solver
+        print 'This test was using the %s solver' % solver
         print '==============================================================='
         print 'INITIATE POST PROCESSING...'
-
 
         nodes_listlist = []
         for idx in range(num_parts):
             nodes_listlist.append(results[(num_nodes,num_parts)]['nodelist'])
 
         # minimised edge condition analysis
+        print 'Analysis of minimised edge boundary...'
         edgelist = adjlist_to_edgelist(results[(num_nodes,num_parts)]['adjlist'])
         results[(num_nodes,num_parts)]['edgeanalysis'] = edge_resultsanalysis(nodes_listlist, edgelist, num_parts)
-
         # equal sharing of nodes condition analysis
+        print 'Analysis of nodes in each partition...'
         results[(num_nodes,num_parts)]['nodeanalysis'] = num_nodes_per_part(nodes_listlist,num_parts)
 
         # COMPARING AGAINST PYMETIS
+        print 'Now comparing against METIS...'
         adjlist_pm = results[(num_nodes,num_parts)]['adjlist']
         pymetis_output = [i + 1 for i in pm.part_graph(num_parts,adjlist_pm)[1]]
 
@@ -120,9 +123,7 @@ for num_nodes in range(min_nodes,max_nodes+1):
                 list.insert(i, Y)
              i += 1
 
-        if pymetis_output[0] == 1:
-            continue
-        else:
+        if pymetis_output[0] != 1:
             A = pymetis_output[0]
             replace(pymetis_output,A,'x')
             replace(pymetis_output,1,A)
@@ -134,12 +135,15 @@ for num_nodes in range(min_nodes,max_nodes+1):
                 if pymetis_output[idx] == part:
                     nodes_listlist_pm[part].append(idx)
 
+
         results[(num_nodes,num_parts)]['nodelist_pm'] = nodes_listlist_pm
 
         # minimised edge condition analysis
+
         results[(num_nodes,num_parts)]['edgeanalysis_pm'] = edge_resultsanalysis(nodes_listlist_pm, edgelist, num_parts)
 
         # equal sharing of nodes condition analysis
+
         results[(num_nodes,num_parts)]['nodeanalysis_pm'] = num_nodes_per_part(nodes_listlist_pm,num_parts)
 
         # calculating Pymetis energy and solution
@@ -154,12 +158,15 @@ for num_nodes in range(min_nodes,max_nodes+1):
         hvalues = results[(num_nodes,num_parts)]['hvalues']
         J = results[(num_nodes,num_parts)]['jvalues']
         offset = results[(num_nodes,num_parts)]['offset']
-
+        #print 'yeah alright alright I was here'
         # removing degeneracy
         del spin_output_pm[0:num_parts]
 
-        energy = energy_from_solution(hvalues, J, spin_output_pm, offset=offset)
-        print energy
+        energy_pm = energy_from_solution(hvalues, J, spin_output_pm, offset=offset)
+        results[(num_nodes,num_parts)]['energies_pm'] = energy_pm
+        energy_moses = results[(num_nodes,num_parts)]['energies'][0]
+
+        print 'Energies of METIS: %s and MOSES %s' % (energy_pm, energy_moses)
 
         print '==============================================================='
         if test_num == totaltests:
