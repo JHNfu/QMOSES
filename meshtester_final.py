@@ -57,19 +57,14 @@ for two_pow_n_parts in range(1,3):
         mesh.add_edges_from(edgelist1)
         mesh.add_nodes_from(range(len(adjlist1)))
 
-        # removing duplicate edges
-        for edge in edgelist1:
-            if (edge[1],edge[0]) in edgelist1:
-                edgelist1.remove((edge[1],edge[0]))
-
-        def num_per_part(list_of_lists_of_nodes,num_parts):
+        def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
             num_nodes = []
             for part_1 in range(num_parts):
                 num_nodes.append(len(list_of_lists_of_nodes[part_1]))
             return num_nodes
 
-        num_nodes = num_per_part(nodes_list,2**n)
-        (edge_results, total_edges) = num_edges_per_partition(nodes_list, edgelist1, 2**n)
+        num_nodes = num_nodes_per_part(nodes_list,2**n)
+        (edge_results, edges_each, total_edges) = edge_resultsanalysis(nodes_list, edgelist1, 2**n)
         #PYMETIS OUTPUT TO NODE LIST OF LISTS
         node_list_pymetis = [[] for x in xrange(2**n)]
         pymetis_output = pm.part_graph(m,adjlist1)[1]
@@ -79,8 +74,8 @@ for two_pow_n_parts in range(1,3):
                     node_list_pymetis[part].append(idx)
 
         ## CREATING RESULTS FOR PYMETIS
-        (edge_results_pymetis, total_edges_pymetis) = num_edges_per_partition(node_list_pymetis, edgelist1, 2**n)
-        num_nodes_pymetis = num_per_part(node_list_pymetis,2**n)
+        (edge_results_pymetis, edges_each, total_edges_pymetis) = edge_resultsanalysis(node_list_pymetis, edgelist1, 2**n)
+        num_nodes_pymetis = num_nodes_per_part(node_list_pymetis,2**n)
 
         def var(any_list):
             mean = sum(any_list)/len(any_list)
