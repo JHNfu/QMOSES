@@ -1112,7 +1112,7 @@ def energy_from_solution(h, J, opt_sol, offset = None):
                 # print J[(i, j)],
                 # print 'hlen', len(h),
                 # print idx, jdx, opt_sol[idx*jdx], J[(idx, jdx)]
-                Jvalue_energy += J[(idx, jdx)]*opt_sol[idx*jdx]
+                Jvalue_energy += J[(idx, jdx)]*opt_sol[idx]*opt_sol[jdx]
 
     if offset == None:
         total_energy = Jvalue_energy + hvalue_energy

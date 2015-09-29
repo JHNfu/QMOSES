@@ -88,7 +88,6 @@ for num_nodes in range(min_nodes,max_nodes+1):
         print '==============================================================='
         print 'TEST PARAMETERS:'
         print 'Elements in Mesh: %s, Number of Partitions: %s' % (num_nodes, num_parts)
-        print 'Number of required fully connected qubits:', req_qubits
         print 'Running the %s solver' % type_solver
         print '==============================================================='
         print 'INITIATE POST PROCESSING...'
@@ -108,8 +107,6 @@ for num_nodes in range(min_nodes,max_nodes+1):
         # COMPARING AGAINST PYMETIS
         adjlist_pm = results[(num_nodes,num_parts)]['adjlist']
         pymetis_output = [i + 1 for i in pm.part_graph(num_parts,adjlist_pm)[1]]
-
-        print pymetis_output
 
         # rearranges pymetis first element to be in partition one
         # "A rose by any other name would smell as sweet"
