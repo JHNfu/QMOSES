@@ -1,3 +1,4 @@
+from __future__ import division
 ##########################################################
 # Q-MOSES - A D-WAVE Mesh Partitioner
 ##########################################################
@@ -42,6 +43,177 @@ import copy as copy
 import subprocess
 import os
 from sympy import *
+import isakovlib
+
+def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
+    no_vert = len(adjlist)
+
+    if load == None:
+        LoadVector = [i * (1/no_part) for i in [1]*no_part]
+        print 'Assuming homogenous system...'
+    elif len(load) == no_part and sum(load) == 1:
+        print 'Partitioning heterogenous system...'
+        LoadVector = load
+        print 'Load Vector:', LoadVector
+    else:
+        print 'Moses Partitioner Error: Load Vector is incorrect type.' \
+              '\t Load Vector should be a list of length(no. of partitions) and sum to 1.'
+
+    print 'LoadVector:', LoadVector
+
+    # MESH PARTITIONING HAMILTONIAN HARD-CODE
+    edgelist = adjlist_to_edgelist(adjlist)
+    graph = nx.Graph()
+    graph.add_edges_from(edgelist)
+    graph.add_nodes_from(range(len(adjlist)))
+    # pos1 = nx.spring_layout(graph)
+
+    # print '======================================================================='
+    # print 'PROBLEM SET-UP'
+    # print '======================================================================='
+    # print 'Number of nodes:', no_vert
+    # print 'Number of partition:', no_part
+    # print 'Number of edges:', len(edgelist)
+    # print 'Therefore need %s qubits.\n' % (no_vert*no_part)
+
+    # A = Symbol('A')
+    # B = Symbol('B')
+    # C = Symbol('C')
+    # print 'edgelist', edgelist
+    # print len(edgelist)
+
+    A = (2.5*len(edgelist))
+    B = no_vert*0.1 # KEEP AT ONE
+    C = 0.5*len(edgelist)
+
+    # print 'A', A
+
+    print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
+
+    Q_HC = dict()
+    for idx in range(no_part*no_vert):
+        for jdx in range(no_part*no_vert):
+            Q_HC[(idx, jdx)] = 0
+
+    for idx in range(no_vert):
+        for jdx in range(no_vert):
+            for print_idx in range(idx*no_part,idx*no_part + no_part):
+                # print ' '
+                for print_jdx in range(jdx*no_part,jdx*no_part + no_part):
+                    if (idx, jdx) in edgelist:
+                        Q_HC[(print_idx, print_jdx)] = C
+                    # print print_idx, print_jdx, idx*no_part, jdx*no_part
+                    if (print_idx - idx*no_part) == (print_jdx - jdx*no_part):
+                        Q_HC[(print_idx, print_jdx)] = 2*B
+                    elif print_idx - idx*no_part == print_jdx:
+                        Q_HC[(print_idx, print_jdx)] = 2*B
+
+    # WRITING EACH NODE * NO_PART
+    for node_dx in range(no_vert):
+        for idx in range(node_dx*no_part,node_dx*no_part + no_part):
+            # print ' '
+            #print idx, jdx
+            for part, jdx in enumerate(range(node_dx*no_part,node_dx*no_part + no_part)):
+                if idx == jdx and part == (no_part - 1):
+                    #Q_HC[(idx,jdx)] = -A - (2*no_vert*LoadVector[0]*B/no_part) + B
+                    Q_HC[(idx,jdx)] = -A - (2*no_vert*LoadVector[0]*B) + B
+                    # print Q_HC[(idx,jdx)],
+                elif idx == jdx and part != (no_part - 1):
+                    #Q_HC[(idx,jdx)] = -A - (2*no_vert*LoadVector[part]*B/no_part) + B
+                    Q_HC[(idx,jdx)] = -A - (2*no_vert*LoadVector[part]*B) + B
+                else:
+                    Q_HC[(idx,jdx)] = 2*A
+                    #print 'else', Q_HC[(idx,jdx)]
+                    # print Q_HC[(idx,jdx)],
+
+    # A LIL FIXER FOR DEGENERACY
+    for node_dx in range(no_vert):
+        for idx in range(node_dx*no_part,node_dx*no_part + 1):
+            # print ' '
+            for jdx in range(node_dx*no_part,node_dx*no_part + 1):
+                if idx == jdx:
+                    # Q_HC[(idx,jdx)] = -A - ((len(edgelist)/no_part)-1)*B
+                    Q_HC[(idx,jdx)] += 2*B
+                    # print Q_HC[(idx,jdx)],
+                    #print 'D', idx, jdx, Q_HC[(idx,jdx)]
+
+    # print 'Printing Q HARDCODE:'
+    # for idx in range(no_part*no_vert):
+    #     print ' '
+    #     for jdx in range(no_part*no_vert):
+    #         print Q_HC[(idx,jdx)],
+
+    # Setting up Q accounting for degeneracy
+    #print '\nQ:'
+    Qdeg = dict()
+    for idx in range(no_part, no_vert*no_part):
+        # print ''
+        for jdx in range(no_part, no_vert*no_part):
+            # print '%.f' % (Q[(idx,jdx)]),
+            Qdeg[(idx - no_part,jdx - no_part)] = (Q_HC[(idx,jdx)])
+
+    (h, J, offset) = dwave_sapi.qubo_to_ising(Qdeg)
+
+    num_reads = 1000
+
+    if solver_type == 'dwave':
+        qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
+        q_size = dwave_solver.properties["num_qubits"]
+
+        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
+        embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
+
+        # Sending problem to the solver
+        embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+        sols = answers['solutions']
+
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+        answers['num_reads'] = num_reads
+
+    elif solver_type == 'isakov':
+
+        answers = isakovlib.solve_Ising(h,J)
+
+        # adding degeneracy
+        negative = '-'
+        deg_plusminus = '+' + negative*(no_part-1)
+        answers['plusminus'] = [deg_plusminus + sol for sol in answers['plusminus']]
+
+    else:
+        print "Moses Partitioner Error: Solver type not recognised. Try dwave or isakov"
+
+    # adding degeneracy back in
+    deg = [1] + [-1]*(no_part-1)
+    answers['solutions'] = [deg + sol for sol in answers['solutions']]
+
+    # Creating Pymetis style node output based on optimal solution
+    opt_sol = answers['solutions'][0]
+    final_solution = []
+    incorrect = 0
+    for nodes in range(no_vert):
+        colour_sols = []
+        for idx in range(nodes*no_part,(nodes*no_part)+no_part):
+            colour_sols.append(opt_sol[idx])
+
+        if sum(colour_sols) == -1:
+            for idx in range(nodes*no_part,(nodes*no_part)+no_part):
+                if opt_sol[idx] == 1:
+                    final_solution.append(idx - nodes*no_part + 1)
+                    # print final_solution
+        else:
+            final_solution.append(0)
+            incorrect += 1
+
+    answers['nodelist'] = final_solution
+    answers['adjlist'] = adjlist
+    answers['num_parts'] = no_part
+    answers['load_vector'] = LoadVector
+    answers['solver'] = solver_type
+
+    return answers
+
+
 
 # GRAPH COLOURING FUNCTION
 def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_address = None):

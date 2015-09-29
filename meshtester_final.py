@@ -13,7 +13,6 @@ nodes = 100
 type_solver = 'isakov'
 solver_address = r"C:\Users\John\PycharmProjects\public-isakov\public-isakov\build\visual_studio_2013\bin\an_ss_ge_fi_vdeg_omp.exe"
 
-
 # Write File
 import time
 timestr = time.strftime("%Y%m%d_%H%M%S")
