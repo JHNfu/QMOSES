@@ -8,8 +8,10 @@ from cvxopt import spmatrix, amd
 
 from qmoseslib import *
 
-test = nx.erdos_renyi_graph(15,0.2)
-adjlist = test.adjacency_list()
+# test = nx.erdos_renyi_graph(15,0.2)
+# adjlist = test.adjacency_list()
+adjlist = [[12, 5], [12, 2, 4], [1, 9], [12, 4, 6], [8, 1, 3, 11], [0, 9], [11, 3], [10, 13, 14], [4, 14], [2, 5], [11, 12, 7], [10, 4, 14, 6], [0, 1, 10, 3], [14, 7], [8, 11, 13, 7]]
+print adjlist
 
 # Pymetis nested dissection
 n = 1
@@ -18,60 +20,41 @@ solver_address = r"C:\Users\John\PycharmProjects\public-isakov\public-isakov\bui
 
 # FIRST IDENTIFY EDGE SEPARATORS
 optimal_solution = recursive_bisection(n,adjlist, solver_type=type_solver, isakov_address=solver_address)
-opt_list = qmosesnodelist_to_pymetisoutput(optimal_solution['nodes'])
 
+optimal_solution_partition = partition(adjlist,solver_type=type_solver, isakov_address=solver_address)
+optimal_solution = optimal_solution_partition
+print 'partition', optimal_solution_partition
+
+print optimal_solution_partition['node_list']
+
+node_list = optimal_solution_partition['node_list']
+opt_list = qmosesnodelist_to_pymetisoutput(node_list)
+
+# Finding edge separator Separators
 edgelist = adjlist_to_edgelist(adjlist)
-# removing duplicate edges
-for edge in edgelist:
-    if (edge[1],edge[0]) in edgelist:
-        edgelist.remove((edge[1],edge[0]))
+edge_separators, possible_node_separators = find_edgeseparators(node_list,edgelist)
 
-# FINDING EDGE SEPARATORS
-# Identifying the Edges between partitions
-edge_separators = []
-possible_node_separators = []
-for part_1 in range(2**n):
-    for part_2 in range(2**n):
-        if part_1 != part_2:
-            for node_A in optimal_solution['nodes'][part_1][0]:
-                for node_B in optimal_solution['nodes'][part_2][0]:
-                    if (node_A, node_B) in edgelist:
-                        edge_separators.append((node_A, node_B))
-                        if node_A not in possible_node_separators:
-                            possible_node_separators.append(node_A)
-                        if node_B not in possible_node_separators:
-                            possible_node_separators.append(node_B)
-                    elif (node_A, node_B) in edgelist:
-                        edge_separators.append((node_B, node_A))
-                        if node_A not in possible_node_separators:
-                            possible_node_separators.append(node_A)
-                        if node_B not in possible_node_separators:
-                            possible_node_separators.append(node_B)
-
-print 'NODES A', optimal_solution['nodes'][0]
-print 'NODES B', optimal_solution['nodes'][1]
-print 'Edge Separators', edge_separators
-
-# The node separators are found from the node cover of the edges. This is the
-# vertex cover.
-# THE VERTEX COVER CAN BE FOUND FROM THE COMPLEMENT OF THE MAXIMAL INDEPENDENT
-# SET
+# Finding node separator from edge separator using networkx function
 G = nx.Graph()
 G.add_edges_from(edge_separators)
-max_ind_set = nx.maximal_independent_set(G)
+matching = nx.bipartite.maximum_matching(G)
+vertex_cover = list(nx.bipartite.to_vertex_cover(G, matching))
+# print 'edge separators:', edge_separators
+# print 'vertex cover:', vertex_cover
+S = vertex_cover
 
-N = nx.Graph()
-N.add_nodes_from(nx.maximal_independent_set(G))
-N.add_edges_from(edge_separators)
-S = [x for x in possible_node_separators if x not in max_ind_set]
+# calculating quantum vertex cover
+edge_separators
 
 print 'Possible Node Separators', possible_node_separators
-print 'Maximal Independent Set', nx.maximal_independent_set(G)
 print 'Node separators:', S
 
 # REMOVE NODE SEPARATORS FROM Q and P
-Q = [x for x in optimal_solution['nodes'][0][0] if x not in S]
-P = [x for x in optimal_solution['nodes'][1][0] if x not in S]
+Q = [x for x in node_list[0] if x not in S] #tick
+P = [x for x in node_list[1] if x not in S] #tick
+
+print 'Q', Q
+print 'P', P
 
 graph = nx.Graph()
 graph.add_edges_from(edgelist)
@@ -79,10 +62,27 @@ graph.add_nodes_from(range(len(adjlist)))
 adj_matrix = nx.adjacency_matrix(graph)
 original_matrix = sps.csr_matrix(adj_matrix)
 
+if S == node_list[0]:
+    print 'ERROR'
+    exit()
+
+
+# Building subgraph based on Q and P nodes
 Q_subgraph = graph.subgraph(Q)
 P_subgraph = graph.subgraph(P)
 Q_adjmatrix = nx.adjacency_matrix(Q_subgraph)
 P_adjmatrix = nx.adjacency_matrix(P_subgraph)
+
+print 'PSUBGRAPH'
+print P_subgraph
+
+print 'PMATRIX'
+print P_adjmatrix
+print type(P_adjmatrix)
+print P_subgraph.nodes()
+print 'QMATRIX'
+print Q_adjmatrix
+print Q_subgraph.nodes()
 
 #converting sparse matrix dict to cxvopt format
 def adjmatrix_to_cvxformat(node_list,adjmatrix):
@@ -97,7 +97,7 @@ def adjmatrix_to_cvxformat(node_list,adjmatrix):
                 jdx_loc.append(jdx)
     return(nonzero, idx_loc, jdx_loc)
 
-# NOW TO NEED FIND THE ORDERING OF P and Q using minimum tree
+# NOW TO NEED FIND THE ORDERING OF P and Q using minimum spanning tree to improve results
 (Q_nonzero,Q_idx_loc,Q_jdx_loc) = adjmatrix_to_cvxformat(Q,Q_adjmatrix)
 (P_nonzero,P_idx_loc,P_jdx_loc) = adjmatrix_to_cvxformat(P,P_adjmatrix)
 Q_spmatrix = spmatrix(Q_nonzero,Q_idx_loc,Q_jdx_loc)
@@ -105,10 +105,18 @@ P_spmatrix = spmatrix(P_nonzero,P_idx_loc,P_jdx_loc)
 Q_order_final = [x for x in amd.order(Q_spmatrix)]
 P_order_final = [x for x in amd.order(P_spmatrix)]
 
+print amd.order(Q_spmatrix)
+print 'PMATRIXX'
+print P_spmatrix
+print 'QMATRIXX'
+print Q_spmatrix
+
 # Change numbering of orderings in original_adjlist
 # S becomes N - len(S) + Element In S
 S_new = [(len(adjlist) - len(S) + x) for x in range(len(S))]
 Q_new = Q_order_final
+print 'P_order_dinal', P_order_final
+print 'Q_order_dinal', Q_order_final
 P_new = [x+len(Q) for x in P_order_final]
 
 print 'Q_new: %s P_new: %s S_new: %s' % (Q_new, P_new, S_new)
@@ -120,7 +128,16 @@ NodeList_new = Q_new + P_new + S_new
 print NodeList_old
 print NodeList_new
 
+print 'A_old',
+
 def update_adjlist(A_old,A_new,A_adjlist):
+    '''
+    reorders adjacency list based on a new and old nodelist
+    :param A_old:
+    :param A_new:
+    :param A_adjlist:
+    :return:
+    '''
     new_adjlist = list(A_adjlist)
     for ndx, node in enumerate(A_adjlist):
         for adjndx, adjnode in enumerate(node):
@@ -135,8 +152,12 @@ def update_adjlist(A_old,A_new,A_adjlist):
             if ndx == sep_node:
                 new_adjlist[A_new[idx]] = node
     return new_adjlist
+
 print 'Old_Adjlist List', adjlist
+print len(adjlist)
+
 final_adjlist = update_adjlist(NodeList_old,NodeList_new,adjlist)
+
 print 'New_Adjlist List', final_adjlist
 # P_new =
 # [x for element in [y for node in adjlist]]
