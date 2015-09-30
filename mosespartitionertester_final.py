@@ -1,4 +1,14 @@
 __author__ = 'John'
+##############################################################################
+# Moses Partitioner Tester Final
+# September 2015
+##############################################################################
+# This code is used to run mulitple tests of the modes partitioner Hamiltonian
+# as defined in the qmoseslib.py. This includes post-processing of energy
+# information, balancing of nodes, and minimising edges.
+# Data is stored in a results file in a dictionary with each test with its
+# own individual key, dumped using the pickle library.
+##############################################################################
 import cPickle as pickle
 from qmoseslib import *
 import isakovlib as isakov
