@@ -64,7 +64,7 @@ for two_pow_n_parts in range(1,3):
             return num_nodes
 
         num_nodes = num_nodes_per_part(nodes_list,2**n)
-        (edge_results, edges_each, total_edges) = edge_resultsanalysis(nodes_list, edgelist1, 2**n)
+        [edge_results, edges_each, total_edges] = edge_resultsanalysis(nodes_list, edgelist1, 2**n)
         #PYMETIS OUTPUT TO NODE LIST OF LISTS
         node_list_pymetis = [[] for x in xrange(2**n)]
         pymetis_output = pm.part_graph(m,adjlist1)[1]

@@ -82,9 +82,9 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
     # print 'edgelist', edgelist
     # print len(edgelist)
 
-    A = (2.5*len(edgelist))
+    A = 2*no_vert
     B = no_vert*0.1 # KEEP AT ONE
-    C = 0.5*len(edgelist)
+    C = 0.5*no_vert
 
     # print 'A', A
 
@@ -1038,7 +1038,7 @@ def edge_resultsanalysis(list_of_lists_of_nodes,edgelist, num_parts):
         #print 'Y', results
         edges_each.append(sum)
     edges_each = edges_each[:num_parts]
-    return (edges_between, edges_each, total_edges)
+    return [edges_between, edges_each, total_edges]
 
 
 def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
@@ -1072,7 +1072,7 @@ def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
 
     variance = var(result)
 
-    return result_list, variance
+    return [result_list, variance]
 
 def energy_from_solution(h, J, opt_sol, offset = None):
 

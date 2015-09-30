@@ -113,7 +113,7 @@ for num_nodes in range(min_nodes,max_nodes+1):
 
         # rearranges pymetis first element to be in partition one
         # "A rose by any other name would smell as sweet"
-        # Trans. "A partition by any other value would effectively be the same"
+        # Translation: "A partition by any other value would effectively be the same"
 
         def replace(list, X, Y):
           i = 0
@@ -139,11 +139,9 @@ for num_nodes in range(min_nodes,max_nodes+1):
         results[(num_nodes,num_parts)]['nodelist_pm'] = nodes_listlist_pm
 
         # minimised edge condition analysis
-
         results[(num_nodes,num_parts)]['edgeanalysis_pm'] = edge_resultsanalysis(nodes_listlist_pm, edgelist, num_parts)
 
         # equal sharing of nodes condition analysis
-
         results[(num_nodes,num_parts)]['nodeanalysis_pm'] = num_nodes_per_part(nodes_listlist_pm,num_parts)
 
         # calculating Pymetis energy and solution
@@ -158,17 +156,26 @@ for num_nodes in range(min_nodes,max_nodes+1):
         hvalues = results[(num_nodes,num_parts)]['hvalues']
         J = results[(num_nodes,num_parts)]['jvalues']
         offset = results[(num_nodes,num_parts)]['offset']
-        #print 'yeah alright alright I was here'
+
         # removing degeneracy
         del spin_output_pm[0:num_parts]
 
         energy_pm = energy_from_solution(hvalues, J, spin_output_pm, offset=offset)
         results[(num_nodes,num_parts)]['energies_pm'] = energy_pm
-        energy_moses = results[(num_nodes,num_parts)]['energies'][0]
-
-        print 'Energies of METIS: %s and MOSES %s' % (energy_pm, energy_moses)
 
         print '==============================================================='
+        print '++++++++++++++++++++  INITIAL COMPARISONS  ++++++++++++++++++++'
+        print '==============================================================='
+        energy_moses = results[(num_nodes,num_parts)]['energies'][0]
+        # print 'Energy of METIS is %s and MOSES is %s' % (energy_pm, energy_moses)
+        # var_pm = results[(num_nodes,num_parts)]['nodeanalysis_pm'][1]
+        # var_moses = results[(num_nodes,num_parts)]['nodeanalysis'][1]
+        # print 'Nodes variance of METIS is %s and MOSES is %s' % (var_pm, var_moses)
+        # totedge_moses = results[(num_nodes,num_parts)]['edgeanalysis'][2]
+        # totedge_pm = results[(num_nodes,num_parts)]['edgeanalysis_pm'][2]
+        # print 'Total edge boundary of METIS is %s and MOSES is %s' % (totedge_pm, totedge_moses)
+        print '==============================================================='
+
         if test_num == totaltests:
             print 'POST-PROCESSING COMPLETE! File can now be analysed.'
         else:
@@ -176,3 +183,5 @@ for num_nodes in range(min_nodes,max_nodes+1):
             print 'You beauty! Now post processing test number', test_num,'...'
         print '==============================================================='
         print '\n\n'
+
+pickle.dump(results, open("ResultsAnalysed_%s.results" % (timestr), "wb"))
