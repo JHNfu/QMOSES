@@ -2,80 +2,11 @@ from __future__ import division
 from __future__ import absolute_import
 __author__ = 'John'
 import scipy.sparse as sps
-import pymetis as pm
-from qmoseslib import *
-import networkx as nx
-import meshpy.triangle as triangle
-import numpy as np
-import numpy.linalg as la
 import matplotlib.pyplot as plt
 from six.moves import range
 from cvxopt import spmatrix, amd
 
 from qmoseslib import *
-
-def needs_refinement(vertices, area):
-    bary = np.sum(np.array(vertices), axis=0)/3
-    max_area = 0.1 + (la.norm(bary, np.inf)-1)*0.1
-    return bool(area > max_area)
-
-# DOING IT ALL MANUALLY
-# HOPE TO GET A SQUARE MESH WITHIN A BIGGER SQUARE
-#
-# # Points define the shape
-# points_outer = [(-2,2),(2,2),(2,-2),(-2,-2)]
-# points_inner = [(-1,1),(1,1),(1,-1),(-1,-1)]
-# points = []
-# points.extend(points_inner)
-# points.extend(points_outer)
-#
-# # print 'Points:', points
-# # print 'Length:', len(points)
-#
-# #Facets define the line between two points, denoted by the number of node as
-# # outlined in the points vector
-# facets_outer = [(4,5),(5,6),(6,7),(7,4)]
-# facets_inner = [(0,1),(1,2),(2,3),(3,0)]
-#
-# #end = (2*len(points_outer))-1
-# #start = len(points_inner)
-# #facets_outer = [(i, i+1) for i in range(start, end)] + [(end, start)]
-#
-# facets = []
-# facets.extend(facets_inner)
-# facets.extend(facets_outer)
-#
-# meshinfo = triangle.MeshInfo()
-# # Holes define which shape (series of faces creating a closed shape)
-# meshinfo.set_holes([(0,0)])
-# meshinfo.set_points(points)
-# meshinfo.set_facets(facets)
-#
-# mesh = triangle.build(meshinfo, refinement_func=needs_refinement)
-# #mesh = triangle.build(meshinfo)
-#
-# def round_trip_connect(start, end):
-#     return [(i, i+1) for i in range(start, end)] + [(end, start)]
-#
-# mesh_points = np.array(mesh.points)
-# mesh_tris = np.array(mesh.elements)
-#
-# # print '\nMesh Points NP Array:\n', mesh_points
-# # print 'Type:', mesh.points
-# # print '\nMesh Elements NP Array:\n', mesh_tris
-# # print 'Type:', mesh.elements
-#
-# mesh_tris_list = mesh_tris.tolist()
-# adjlist = meshpytrielements_to_adjlist(mesh_tris_list)
-# print 'Final Adjacency List', adjlist
-#
-# import matplotlib.pyplot as pt
-# # Triplot meshes triangles. Takes x_y mesh plots
-# pt.triplot(mesh_points[:, 0], mesh_points[:, 1], mesh_tris)
-# pt.show()
-
-#adjlist = [[5, 6], [2,7], [1,9,10], [5,9], [7,10], [0, 3, 9, 8], [0,10], [9, 1, 10, 4], [5], [5,3,10,2,7], [6,9,2,7,4]]
-#edgelist = adjlist_to_edgelist(adjlist)
 
 test = nx.erdos_renyi_graph(15,0.2)
 adjlist = test.adjacency_list()

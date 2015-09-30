@@ -1,4 +1,4 @@
-__author__ = 'John'
+__author__ = 'John Furness'
 ##############################################################################
 # Moses Partitioner Tester Final
 # September 2015
