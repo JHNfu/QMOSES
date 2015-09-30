@@ -1038,7 +1038,8 @@ def edge_resultsanalysis(list_of_lists_of_nodes,edgelist, num_parts):
         #print 'Y', results
         edges_each.append(sum)
     edges_each = edges_each[:num_parts]
-    return [edges_between, edges_each, total_edges]
+    return (edges_between, edges_each, total_edges)
+
 
 
 def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
@@ -1061,16 +1062,16 @@ def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
 
     def var(any_list):
         mean = sum(any_list)/len(any_list)
-        var = 0
+        result = 0
         for i in any_list:
-            var += (mean - i) ** 2
-    return var
+            result += (mean - i) ** 2
+        return result
 
     result_list = []
     for part_1 in range(num_parts):
         result_list.append(len(list_of_lists_of_nodes[part_1]))
 
-    variance = var(result)
+    variance = var(result_list)
 
     return [result_list, variance]
 

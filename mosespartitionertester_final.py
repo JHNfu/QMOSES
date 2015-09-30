@@ -100,11 +100,18 @@ for num_nodes in range(min_nodes,max_nodes+1):
 
         # minimised edge condition analysis
         print 'Analysis of minimised edge boundary...'
-        edgelist = adjlist_to_edgelist(results[(num_nodes,num_parts)]['adjlist'])
-        results[(num_nodes,num_parts)]['edgeanalysis'] = edge_resultsanalysis(nodes_listlist, edgelist, num_parts)
+        adjlist = results[(num_nodes,num_parts)]['adjlist']
+        edgelist = adjlist_to_edgelist(adjlist)
+        (edges_between, edges_each, total_edges) = edge_resultsanalysis(nodes_listlist, edgelist, num_parts)
+
+        results[(num_nodes,num_parts)]['edges_between'] = edges_between
+        results[(num_nodes,num_parts)]['edges_each'] = edges_each
+        results[(num_nodes,num_parts)]['total_edges'] = total_edges
+
         # equal sharing of nodes condition analysis
         print 'Analysis of nodes in each partition...'
-        results[(num_nodes,num_parts)]['nodeanalysis'] = num_nodes_per_part(nodes_listlist,num_parts)
+        nodeanalysis = num_nodes_per_part(nodes_listlist, num_parts)
+        results[(num_nodes,num_parts)]['nodeanalysis'] = nodeanalysis
 
         # COMPARING AGAINST PYMETIS
         print 'Now comparing against METIS...'
@@ -130,19 +137,20 @@ for num_nodes in range(min_nodes,max_nodes+1):
             replace(pymetis_output,'x',1)
 
         nodes_listlist_pm = [[] for x in xrange(num_parts)]
-        for idx in range(len(adjlist_pm)):
-            for part in range(num_parts):
-                if pymetis_output[idx] == part:
-                    nodes_listlist_pm[part].append(idx)
-
+        for idx, element in enumerate(pymetis_output):
+            nodes_listlist_pm[element-1].append(idx)
 
         results[(num_nodes,num_parts)]['nodelist_pm'] = nodes_listlist_pm
 
         # minimised edge condition analysis
-        results[(num_nodes,num_parts)]['edgeanalysis_pm'] = edge_resultsanalysis(nodes_listlist_pm, edgelist, num_parts)
+        (edges_between, edges_each, total_edges) = edge_resultsanalysis(nodes_listlist_pm, edgelist, num_parts)
+        results[(num_nodes,num_parts)]['edges_between_pm'] = edges_between
+        results[(num_nodes,num_parts)]['edges_each_pm'] = edges_each
+        results[(num_nodes,num_parts)]['total_edges_pm'] = total_edges
 
         # equal sharing of nodes condition analysis
-        results[(num_nodes,num_parts)]['nodeanalysis_pm'] = num_nodes_per_part(nodes_listlist_pm,num_parts)
+        node_analysis = num_nodes_per_part(nodes_listlist_pm,num_parts)
+        results[(num_nodes,num_parts)]['nodeanalysis_pm'] = node_analysis
 
         # calculating Pymetis energy and solution
         # pymetis output to mesh partitioner spin output
@@ -167,13 +175,20 @@ for num_nodes in range(min_nodes,max_nodes+1):
         print '++++++++++++++++++++  INITIAL COMPARISONS  ++++++++++++++++++++'
         print '==============================================================='
         energy_moses = results[(num_nodes,num_parts)]['energies'][0]
-        # print 'Energy of METIS is %s and MOSES is %s' % (energy_pm, energy_moses)
-        # var_pm = results[(num_nodes,num_parts)]['nodeanalysis_pm'][1]
-        # var_moses = results[(num_nodes,num_parts)]['nodeanalysis'][1]
-        # print 'Nodes variance of METIS is %s and MOSES is %s' % (var_pm, var_moses)
-        # totedge_moses = results[(num_nodes,num_parts)]['edgeanalysis'][2]
-        # totedge_pm = results[(num_nodes,num_parts)]['edgeanalysis_pm'][2]
-        # print 'Total edge boundary of METIS is %s and MOSES is %s' % (totedge_pm, totedge_moses)
+        print 'Energy of METIS is %s and MOSES is %s' % (energy_pm, energy_moses)
+
+        print '\n++++++++++++++++++++++++ NODE ANALYSIS ++++++++++++++++++++++++'
+        var_pm = results[(num_nodes,num_parts)]['nodeanalysis_pm'][1]
+        var_moses = results[(num_nodes,num_parts)]['nodeanalysis'][1]
+        print 'Nodes variance of METIS is %s and MOSES is %s' % (var_pm, var_moses)
+        print 'Node Lists:',
+        print 'METIS:', results[(num_nodes,num_parts)]['nodeanalysis_pm'][0],
+        print 'MOSES:', results[(num_nodes,num_parts)]['nodeanalysis'][0]
+
+        print '\n++++++++++++++++++++++++ EDGE ANALYSIS ++++++++++++++++++++++++'
+        totedge_moses = results[(num_nodes,num_parts)]['total_edges']
+        totedge_pm = results[(num_nodes,num_parts)]['total_edges_pm']
+        print 'Total edge boundary of METIS is %s and MOSES is %s' % (totedge_pm, totedge_moses)
         print '==============================================================='
 
         if test_num == totaltests:
