@@ -45,6 +45,93 @@ import os
 from sympy import *
 import isakovlib
 
+##############################################################################
+# FUNCTIONS FOR NESTED DISSECTION FOR FILL-REDUCING ON SPARSE MATRICS
+##############################################################################
+
+def find_edgeseparators(node_list,edgelist):
+
+    """
+    edgeseparator = find_edgeseparators(node_list,edgelist)
+    :param node_list: list of lists, with each list containing
+    the nodes in each partition
+    :param edgelist: all the edges of the graph
+    :return: edge_separators: the separators between the nodes in a list
+    :return: possible_node_separators: a list of all nodes on the edge separators
+    """
+
+    # removing duplicate edges
+    for edge in edgelist:
+        if (edge[1],edge[0]) in edgelist:
+            edgelist.remove((edge[1],edge[0]))
+
+    n = 1
+
+    # If you are reading this, forgive the original coder. This is horrible.
+    # Please update append to the following comment.
+    # total_time_wasted_trying_to_understand = 0 hours 10 minutes
+    edge_separators = []
+    possible_node_separators = []
+    for part_1 in range(2**n):
+        for part_2 in range(2**n):
+            if part_1 != part_2:
+                for node_A in node_list[part_1]:
+                    for node_B in node_list[part_2]:
+                        if (node_A, node_B) in edgelist:
+                            edge_separators.append((node_A, node_B))
+                            if node_A not in possible_node_separators:
+                                possible_node_separators.append(node_A)
+                            if node_B not in possible_node_separators:
+                                possible_node_separators.append(node_B)
+                        elif (node_A, node_B) in edgelist:
+                            edge_separators.append((node_B, node_A))
+                            if node_A not in possible_node_separators:
+                                possible_node_separators.append(node_A)
+                            if node_B not in possible_node_separators:
+                                possible_node_separators.append(node_B)
+
+    return edge_separators, possible_node_separators
+
+def vertexcover(adjlist):
+    '''
+
+    Vertex cover generates the h, J values for vertex cover Hamiltonian in
+    Lucas.
+    This was converted from a QUBO to an Ising spin problem by hand
+
+    :param input: input can be an edge list of adjlist
+    :return:
+    '''
+
+    edgelist = adjlist_to_edgelist(adjlist)
+
+    # coefficients
+    A = 1
+    B = 1
+    N = len(adjlist)
+    num_edges = len(edgelist)
+
+    # determining optimiser term (B term)
+    h = []
+    for idx in range(N):
+        h.append(0.5*B)
+
+    # determining penalty term (A term)
+    J = dict()
+    for edge in edgelist:
+        h[edge[0]] += -0.25*A
+        h[edge[1]] += -0.25*A
+        J[(edge[0],edge[1])] = 0.25*A
+
+    # offset energy
+    offset = 0.5*B*N + (num_edges*0.25)
+
+    return h, J, offset
+
+##############################################################################
+# VARIOUS FUNCTIONS FOR MESH PARTITIONING
+##############################################################################
+
 def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
     no_vert = len(adjlist)
 
@@ -187,7 +274,7 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
     deg = [1] + [-1]*(no_part-1)
     answers['solutions'] = [deg + sol for sol in answers['solutions']]
 
-    # adding offset back to energies
+    # adding offset from Q to h, J conversion back to energies
     answers['energies'] = [energy + offset for energy in answers['energies']]
 
     # Creating Pymetis style node output based on optimal solution
@@ -454,7 +541,6 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
     graph.add_nodes_from(nodes)
 
     max_degree = max(graph.degree().values())
-    #test_size = len(graph.nodes())
     num_vertices = len(adjlist)
     test_size = num_vertices
 
@@ -463,10 +549,6 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
 
     # Number of Qubits Required
     num_qubits = test_size - 1 # Minus 1 for degeneracy
-
-    #print 'Test Size:', test_size
-    #print 'Num Vertices:', num_vertices
-    #print 'Num QUBITS:', num_qubits
 
     # Bias for each qubit
     h = [2*A] * num_qubits
@@ -482,17 +564,9 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
 
     # Set up the existing connections to have a value of 1.5
     for i,j in edgelist:
-        # Deal with degeneracy by ignoring the last spin and setting it
-        # up as a bias instead.
         if i == num_qubits:
-            # print 'A', A
-            # print 'j', j
-            # print len(h)
             h[j] = 2*A-0.5 # For degeneracy
         elif j == num_qubits:
-            # print 'A', A
-            # print 'i', i
-            # print len(h)
             h[i] = 2*A-0.5 # For degeneracy
         else:
             J[(i, j)] = 2*A-0.5
@@ -503,9 +577,7 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
             if i >= j:
                 J[(i, j)] = 0.0
 
-    output = defaultdict(list)
-    output['num_qubits'] = num_qubits
-
+    answers = dict()
     if solver_type == 'dwave':
         print "\nSolving Partition with D-Wave Local Solver"
         ## PRINT ERROR IF SOLVER ISN'T DEFINED
@@ -526,76 +598,33 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
         output['opt_sol'] = opt_sol
 
     elif solver_type == 'isakov':
-        print "Solving Partition with Isakov Solver"
-        # PRINT ERROR IF SOLVER ADDRESS ISN'T DEFINED
-        # PRINT LATTICE FILE
+        answers = isakovlib.solve_Ising(h, J)
 
-        if os.path.isfile("PartitionLattice.lattice") == 1:
-            os.remove("PartitionLattice.lattice")
-
-        file = open("PartitionLattice.lattice", "w")
-        file.write("Partition Function File")
-
-        # Printing h values to Lattice File
-        for idx, element in enumerate(h):
-            file.write("\n%s %s %s" % (idx, idx, element))
-
-        # Printing J values to Lattice File
-        #print 'J values:',
-        for i in range(len(h)):
-            #print ' '
-            for j in range(len(h)):
-                if i >= j:
-                    continue
-                else:
-                    file.write("\n%s %s %s" % (i, j, J[(i,j)]))
-                    #file.write("\n%s %s %s" % (j, i, J_dict[(i,j)]))
-
-        file.close()
-
-        lattice_file = "PartitionLattice.lattice"
-
-        args = [isakov_address, "-l", lattice_file, "-s", "200", "-r", "1000"]
-        #subprocess.call(args)
-        popen = subprocess.Popen(args, stdout=subprocess.PIPE)
-        #popen.wait()
-        isakov_output = popen.stdout.read()
-        isakov_output = isakov_output.splitlines()
-
-        solution_listoflist = []
-        for s in isakov_output:
-            solution_listoflist.append(s.split())
-
-        for s in solution_listoflist:
-            output['energy'].append(float(s[0]))
-            output['occurences'].append(int(float(s[1])))
-            output['plusorminus'].append(s[2])
-
-        for element in output['plusorminus']:
-            conversion = []
-            for spin in element:
-                if spin == '+':
-                    conversion.append(1)
-                elif spin == '-':
-                    conversion.append(-1)
-                else:
-                    print "It's output something other than +, -"
-            output['solutions'].append(conversion)
-
-
-        # YOU'RE NOT ADDING THE EXTRA QUBIT YA TWAT
-        sols = output['solutions']
-        map(lambda sols: sols.append(1), output['solutions'])
-        opt_sol = sols[0]
-        output['opt_sol'] = opt_sol
+        # adding degeneracy
+        negative = '-'
+        deg_plusminus = '+'
+        answers['plusminus'] = [deg_plusminus + sol for sol in answers['plusminus']]
 
     else:
         print "PARTITION ERROR: Solver type not recognised. Try DWave or Isakov"
 
-    # Finding length of edge boundary
-    output['edge length'] = length_edgeboundary(output,opt_sol)
+    # adding degeneracy back in
+    deg = [1]
+    answers['solutions'] = [deg + sol for sol in answers['solutions']]
 
-    return output
+    # optimal solution
+    opt_sol = answers['solutions'][0]
+    answers['opt_sol'] = opt_sol
+
+    # finding length of edge boundary
+    answers['edge length'] = length_edgeboundary(adjlist, opt_sol)
+
+    # creating node list
+    answers['node_list'] = split_nodelist(opt_sol, adjlist)
+
+    answers['num_qubits'] = num_qubits
+
+    return answers
 
 # A RECURSIVE BISECTION SCHEME FOR 2^N PARTITIONS
 # Based on previously defined function, partition.
@@ -685,49 +714,29 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
 
     elif n > 1:
         print "Entered n>1 with n =", n
-        #print "Adjlist:", adjlist
+
         try:
             nodes_orig1
         except NameError:
             print "Recursive Bisection: Round One"
         else:
             adjlist_en = enlarge_adjlist(nodes_orig1,adjlist)
-            #print "Adjlist Orig:", adjlist_en
-            #print "Nodes Orig:", nodes_orig1
 
-        #print "GOT TO PARTITION"
         results = partition(adjlist, solver_type = solver_type,
                             dwave_solver = dwave_solver,
                             isakov_address = isakov_address)
 
         opt_sol = results['opt_sol']
         print "Number of Qubits", results['num_qubits']
-        #print "GOT THROUGH PARTITION"
 
         try:
             nodes_orig1
         except NameError:
             [part_A_adj, part_B_adj] = split_adjlist(opt_sol, adjlist)
             [part_A_nodes, part_B_nodes] = split_nodelist(opt_sol, adjlist)
-            #print "GOT TO ZERO"
-            #print "A Nodes", part_A_nodes
-            #print "B Nodes", part_B_nodes
         else:
-            ### IN HERE, NON-REDUCE ADJLIST
-            #adjlist = enlarge_adjlist(nodes_orig1,adjlist)
-            #print 'Nodes Original:', nodes_orig1
-            #print '\t\t\t ADJLIST FROM NODES DATA:'
-            #print adjlist_en
-            #print opt_sol
-            #print nodes_orig1
             [part_A_adj, part_B_adj] = split_adjlist_fromnodes(opt_sol,adjlist_en,nodes_orig1)
             [part_A_nodes, part_B_nodes] = split_nodelist_fromnodes(opt_sol, nodes_orig1)
-            #print '\tOpt_sol length = %s and: %s' % (len(opt_sol),opt_sol)
-            #print '\tLength A + B = ', len(part_A_nodes) + len(part_B_nodes)
-            #print '\tLength nodes_orig:', len(nodes_orig1)
-            #print "GOT TO TWO"
-            #print "A Nodes", part_A_nodes
-            #print "B Nodes", part_B_nodes
 
         #print "Adjlist A, wo reduction:", part_A_adj
 
@@ -735,15 +744,11 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
         reduce_adjlist(part_B_nodes, part_B_adj)
 
         nodes_orig1 = part_A_nodes
-        #print "Nodes Original", nodes_orig1
-        #print "Adjlist A, with reduction::", part_A_adj
-        #print "n", n
+
         recursive_bisection(n-1, part_A_adj, solver_type = solver_type, dwave_solver = dwave_solver, isakov_address = isakov_address)
 
         nodes_orig1 = part_B_nodes
-        #print "Nodes Original", nodes_orig1
-        #print "Adjlist B:", part_B_adj
-        #print "n", n
+
         recursive_bisection(n-1, part_B_adj, solver_type = solver_type, dwave_solver = dwave_solver, isakov_address = isakov_address)
 
     else:
@@ -770,13 +775,26 @@ def length_edgeboundary(adjlist,opt_sol):
     return no_edges
 
 def adjlist_to_edgelist(adjlist):
-    j = 0
+
     edgelist = []
-    for y in adjlist:
+    for j, y in enumerate(adjlist):
         for i in y:
             edgelist.append((j, i))
-        j += 1
+
     return edgelist
+
+def edgelist_to_adjlist(edgelist):
+
+    max_iter = 0
+    for edge in edgelist:
+        if max(edge) > max_iter:
+            max_iter = max(edge)
+
+    adjlist = [[] for i in range(max_iter+1)]
+    for edge in edgelist:
+        adjlist[edge[0]].append(edge[1])
+
+    return adjlist
 
 # SPLIT
 # Returns two adjacency lists given the partition and one adjlist
@@ -927,14 +945,29 @@ def enlarge_adjlist(nodes,adjlist):
         # print "\n NEW ROUND \n \n"
     return adjlistReturn
 
-# Converts output from recursive bisection of qmoses to the pymetis output
 def qmosesnodelist_to_pymetisoutput(nodes_list):
-    my_list = [l[0] for l in nodes_list]
-    list1 = range(max(map(max, my_list))+1)
-    for idx, j in enumerate(my_list):
-        for i in j:
-            list1[i] = idx
-    return list1
+
+    """
+    Converts a list of list of nodes in each partition into a similar style
+    output to what PyMETIS does.
+
+    e.g. [[0,3,4],[1,2]] to [1,2,2,1,1]
+
+    :param nodes_list:
+    :return:
+    """
+
+    max_value = 0
+    for part in nodes_list:
+        max_test = max(part)
+        if max_test > max_value:
+            max_value = max_test
+
+    output = [0]*(max_value + 1)
+    for part_num, part in enumerate(nodes_list):
+        for element in part:
+            output[element] = part_num + 1
+    return output
 
 # Converts MeshPy Triangle 2D or Tetrahedral 3D elements list or array to
 # adjacency list for partitioning
