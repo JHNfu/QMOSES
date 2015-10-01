@@ -1,22 +1,22 @@
 from __future__ import division
-##########################################################
-# Q-MOSES - A D-WAVE Mesh Partitioner
-##########################################################
+##############################################################################
+# +++++++++++++++++++ Q-MOSES - A D-WAVE Mesh Partitioner +++++++++++++++++++
+##############################################################################
 # This is the staff for you to use, Moses.
 # Not developed with a good wind and good timing, or even
 # divine intervention, but rather an understanding of
 # fluid dynamics, applied mathematics, quantum mechanics,
 # & computational complexity theory.
-##########################################################
+##############################################################################
 # Developed as part of the Honours Project by John Furness
 # With generous in-kind support provided by QxBranch and Shoal Group
 # August 2015
-##########################################################
+##############################################################################
 # For algorithm explanations and use cases, see attached documentation.
 # Written to PEP8 Python standard.
 # Requires:
 # numpy, networkx, matplotlib, pyplot, dwave_sapi
-##########################################################
+##############################################################################
 # The MIT License (MIT)
 # Copyright (c) 2015 John Furness
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software
@@ -32,7 +32,7 @@ from __future__ import division
 # ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-##########################################################
+##############################################################################
 
 import networkx as nx
 import numpy as nm
@@ -40,14 +40,14 @@ import dwave_sapi
 from dwave_sapi import local_connection, find_embedding
 from collections import defaultdict
 import copy as copy
-import subprocess
-import os
 from sympy import *
 import isakovlib
+
 
 ##############################################################################
 # FUNCTIONS FOR NESTED DISSECTION FOR FILL-REDUCING ON SPARSE MATRICS
 ##############################################################################
+
 
 def find_edgeseparators(node_list,edgelist):
 
@@ -95,6 +95,7 @@ def find_edgeseparators(node_list,edgelist):
 
     return edge_separators, possible_node_separators
 
+
 def vertexcover(adjlist):
     '''
 
@@ -132,9 +133,11 @@ def vertexcover(adjlist):
 
     return h, J, offset
 
+
 ##############################################################################
 # VARIOUS FUNCTIONS FOR MESH PARTITIONING
 ##############################################################################
+
 
 def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
     """
@@ -418,7 +421,7 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
 
     return answers
 
-
+# needs serious serious serious improvement
 def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
     """
     recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
@@ -531,9 +534,11 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
 
     return output
 
+
 ###############################################################################
-# The following make recursive bisection and other functions work
+# UNDER THE HOOD: The following make other functions work
 ###############################################################################
+
 
 def length_edgeboundary(adjlist,opt_sol):
 
@@ -565,6 +570,7 @@ def length_edgeboundary(adjlist,opt_sol):
 
     return no_edges
 
+
 def adjlist_to_edgelist(adjlist):
     """
 
@@ -584,6 +590,7 @@ def adjlist_to_edgelist(adjlist):
             edgelist.append((j, i))
 
     return edgelist
+
 
 def edgelist_to_adjlist(edgelist):
     """
@@ -652,12 +659,18 @@ def split_adjlist(opt_sol,adjlist):
     return [adjlist_A, adjlist_B]
 
 
-def split_nodelist(opt_sol,adjlist):
+def split_nodelist(opt_sol, adjlist):
 
-    # Converting Adjacency List to a Graph
-    edgelist = adjlist_to_edgelist(adjlist)
-    graph = nx.Graph()
-    graph.add_edges_from(edgelist)
+    """
+
+    split_nodelist(opt_sol,adjlist) spits out a list of lists with first list
+    the nodes in partition A and the second is the ndoes in Paritition B
+
+    :param opt_sol:
+    :param adjlist:
+    :return:
+
+    """
 
     # Splitting Nodes from Optimal Solution
     part_A_nodes = []
@@ -671,10 +684,25 @@ def split_nodelist(opt_sol,adjlist):
             print 'ERROR in split_nodelist: geez Louise - You got something ' \
                   'other than -1 or ' \
                   '1 in your sol.'
+
     return [part_A_nodes, part_B_nodes]
 
+# needs improvements
 def split_adjlist_fromnodes(opt_sol,adjlist,nodes_orig):
-    """Splits the partition into two adjacency files based on a lit of original nodes"""
+
+    """
+
+    Splits the partition into two adjacency lists based on a list of original
+    nodes. This was created due to the adjacency list reduction function, the
+    change the element the in the adjacency list to the least.
+
+    :param opt_sol:
+    :param adjlist:
+    :param nodes_orig:
+    :return:
+
+    """
+
     # Converting Adjacency List to a Graph
     edgelist = adjlist_to_edgelist(adjlist)
     graph = nx.Graph()
@@ -703,7 +731,21 @@ def split_adjlist_fromnodes(opt_sol,adjlist,nodes_orig):
 
     return [adjlist_A, adjlist_B]
 
+
 def split_nodelist_fromnodes(opt_sol,nodes_orig):
+    """
+
+    Splits the partition into two nodes lists based on a list of original
+    nodes. This was created due to the adjacency list reduction function, the
+    change the element the in the adjacency list to the least.
+
+    :param opt_sol:
+    :param adjlist:
+    :param nodes_orig:
+    :return:
+
+    """
+
     part_AA_nodes = []
     part_BB_nodes = []
     for idx, s in enumerate(opt_sol):
@@ -713,10 +755,30 @@ def split_nodelist_fromnodes(opt_sol,nodes_orig):
             part_BB_nodes.append(nodes_orig[idx])
         else:
             print 'Error: Function partition contains strange output.'
+
     return [part_AA_nodes, part_BB_nodes]
 
-
+# needs improvement
 def reduce_adjlist(nodes,adjlist):
+
+    """
+
+    reduce_adjlist(nodes,adjlist): from an adjacency list of nodes with
+    strange labels return a reduced adjacency list containing nodes from
+    0 to number of nodes.
+
+    Tread with caution.
+
+    Inverse function is enlarge_adjlist.
+
+    i.e. input: [[5,13],[0,14],[0],[5]]
+         output: [[1,2],[0,3],[0],[1]]
+
+    :param nodes:
+    :param adjlist:
+    :return:
+    """
+
     j = 0
     i = 0
     k = 0
@@ -726,19 +788,37 @@ def reduce_adjlist(nodes,adjlist):
         for x in adjlist:
             for n in x:
                 if p == n:
-                    # print 'Adjlist K,J:', adjlist_A[k][j]
-                    # print 'Success: p:', p,  'n:', n, 'x:', x, 'i:', i,'k:', k, 'j:', j
                     adjlistReturn[k][j] = i
                     j += 1
                 else:
-                    # print 'WRONG: p:', p,  'n:', n, 'x:', x, 'i:', i,'k:', k, 'j:', j
                     j += 1
             j = 0
             k += 1
         i += 1
     return adjlistReturn
 
+# needs improvement
 def enlarge_adjlist(nodes,adjlist):
+
+    """
+
+    enlarge_adjlist(nodes,adjlist): from an adjacency list of nodes with
+    strange labels return a reduced adjacency list containing nodes from
+    0 to number of nodes.
+
+    Tread with caution.
+
+    Inverse function is reduce_adjlist.
+
+    i.e. output: [[1,2],[0,3],[0],[1]]
+         input: [[5,13],[0,14],[0],[5]]
+
+
+    :param nodes:
+    :param adjlist:
+    :return:
+    """
+
     j = 0
     i = 0
     k = 0
@@ -768,6 +848,7 @@ def enlarge_adjlist(nodes,adjlist):
         # print "\n NEW ROUND \n \n"
     return adjlistReturn
 
+
 def qmosesnodelist_to_pymetisoutput(nodes_list):
 
     """
@@ -791,15 +872,17 @@ def qmosesnodelist_to_pymetisoutput(nodes_list):
     for part_num, part in enumerate(nodes_list):
         for element in part:
             output[element] = part_num + 1
+
     return output
 
-
+# needs improvement
 def meshpytrielements_to_adjlist(meshpy_elements):
 
     """
 
     meshpytrielements_to_adjlist(meshpy_elements):
     Converts MeshPy Triangle 2D or Tetrahedral 3D elements list or array to
+    an adjacency file.
 
     :param meshpy_elements:
     :return:
@@ -853,7 +936,10 @@ def meshpytrielements_to_adjlist(meshpy_elements):
 # FUNCTIONS FOR RESULTS ANALYSES
 ##############################################################################
 
-
+# needs significant improvement
+# it's likely this doesn't even output the correct results
+# also need to ensure it works for moses partition whereby partitions are
+# not actually allocated
 def edge_resultsanalysis(list_of_lists_of_nodes,edgelist, num_parts):
 
     """
@@ -943,6 +1029,7 @@ def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
 
     return [result_list, variance]
 
+
 def energy_from_solution(h, J, opt_sol, offset = None):
 
     """
@@ -954,7 +1041,7 @@ def energy_from_solution(h, J, opt_sol, offset = None):
     Args:
         h: h value weightings for Ising spin in a list
         J: J value couplings for Ising spin in a dictionary.
-        opt_sol: a list of spins
+        opt_sol: a list of spins, e.g. [-1, 1, 1, -1...
         offset: offset energy if applicable
 
     Returns:
@@ -981,11 +1068,13 @@ def energy_from_solution(h, J, opt_sol, offset = None):
 
     return total_energy
 
+
 ##############################################################################
-# MISC FUNCTIONS
+# MISC FUNCTIONS - ATTEMPTS AT OTHER THINGS
 ##############################################################################
 
-
+# needs serious improvement and tests
+# based on sympy, not ideal
 def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_address = None):
     """
 
@@ -1150,6 +1239,10 @@ def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_a
               'the solver did not find one.'
 
     return final_solution
+
+
+
+
 
 # FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
 # Using graph partitioning, or graph colouring methods, even clique methods
