@@ -44,9 +44,18 @@ vertex_cover = list(nx.bipartite.to_vertex_cover(G, matching))
 S = vertex_cover
 
 # calculating quantum vertex cover
-edge_separators
+edge_sep_adjlist = edgelist_to_adjlist(edge_separators)
+h, J, offset = vertexcover(edge_sep_adjlist)
+answer = isakovlib.solve_Ising(h, J, offset)
+opt_sol = answer['solutions'][0]
+
+vertex_cover_qc = []
+for idx, node in enumerate(opt_sol):
+    if node == 1:
+        vertex_cover_qc.append(idx)
 
 print 'Possible Node Separators', possible_node_separators
+print 'Quantum Node Separator', vertex_cover_qc
 print 'Node separators:', S
 
 # REMOVE NODE SEPARATORS FROM Q and P

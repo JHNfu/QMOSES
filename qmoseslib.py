@@ -52,12 +52,15 @@ import isakovlib
 def find_edgeseparators(node_list,edgelist):
 
     """
+
     edgeseparator = find_edgeseparators(node_list,edgelist)
+
     :param node_list: list of lists, with each list containing
     the nodes in each partition
     :param edgelist: all the edges of the graph
     :return: edge_separators: the separators between the nodes in a list
     :return: possible_node_separators: a list of all nodes on the edge separators
+
     """
 
     # removing duplicate edges
@@ -105,11 +108,12 @@ def vertexcover(adjlist):
 
     edgelist = adjlist_to_edgelist(adjlist)
 
-    # coefficients
-    A = 1
-    B = 1
     N = len(adjlist)
     num_edges = len(edgelist)
+
+    # coefficients
+    A = (N)*0.5
+    B = 1
 
     # determining optimiser term (B term)
     h = []
@@ -133,6 +137,26 @@ def vertexcover(adjlist):
 ##############################################################################
 
 def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
+    """
+
+    Moses Partitioner: implementation of the flagship Hamiltonian for this
+    library of impeccable functions.
+    Moses partitioner can do a  lot, you know? Partition into a positive
+    integer number of parts, which is real handy. Additionally it can be used
+    for Load Balancing on heterogeneous systems.
+
+    Requires (Num_Partitions - 1) * Num_Elements fully connected qubits.
+
+    :param no_part: number of partitions
+    :param adjlist: adjacency list
+    :param load: load vector consisting of Num_Partitions elements and summing
+    to one
+    :param solver_type: string or 'isakov' or 'dwave'
+    :param dwave_solver: solver class, local connection etc
+    :param isakov_address: solver address e.g., '= r"C:..........'
+    :return: well, quite a lot really.
+    """
+
     no_vert = len(adjlist)
 
     if load == None:
@@ -153,27 +177,10 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
     graph = nx.Graph()
     graph.add_edges_from(edgelist)
     graph.add_nodes_from(range(len(adjlist)))
-    # pos1 = nx.spring_layout(graph)
-
-    # print '======================================================================='
-    # print 'PROBLEM SET-UP'
-    # print '======================================================================='
-    # print 'Number of nodes:', no_vert
-    # print 'Number of partition:', no_part
-    # print 'Number of edges:', len(edgelist)
-    # print 'Therefore need %s qubits.\n' % (no_vert*no_part)
-
-    # A = Symbol('A')
-    # B = Symbol('B')
-    # C = Symbol('C')
-    # print 'edgelist', edgelist
-    # print len(edgelist)
 
     A = 2*no_vert
     B = no_vert*0.1 # KEEP AT ONE
     C = 0.5*no_vert
-
-    # print 'A', A
 
     print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
 
@@ -306,234 +313,19 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
     return answers
 
 
-
-# GRAPH COLOURING FUNCTION
-def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_address = None):
-    no_vert = len(adjlist)  # Number of vertices
-
-    print 'FUNCTION COLOURGRAPH Beginning...'
-    print 'Number of nodes:', no_vert
-    print 'Number of colours:', no_col
-    print 'Therefore need %s qubits.\n' % (no_vert*no_col)
-
-    Aye = 1
-    Bee = 1
-
-    A = Symbol('A')
-    B = Symbol('B')
-
-    x = symbols('x(1:%d\,1:%d)' % (((no_vert + 1) , (no_col + 1))))
-
-    H1 = 0
-    term = 1
-    for v in range(no_vert):
-        for i in range(no_col):
-            v += 1 # FIX THIS!
-            i += 1 # FIX THIS!
-            term -= x[((v - 1) * no_col) + i - 1]
-            v -= 1 # FIX THIS!
-            i -= 1 # FIX THIS!
-        term = term**2
-        H1 += term
-        term = 1
-    H1 = A * H1
-
-    edgelist = adjlist_to_edgelist(adjlist)
-
-    # removing duplicate edges
-    for edge in edgelist:
-        if (edge[1],edge[0]) in edgelist:
-            edgelist.remove((edge[1],edge[0]))
-
-    H2 = 0
-    for edge in edgelist:
-        for colour in range(no_col):
-            H2 += x[((edge[0] - 1) * no_col) + colour - 1]*x[((edge[1] - 1) * no_col) + colour - 1]
-    H2 = (B)*H2 # Dividing by 2 as edgelist defines edges twice
-
-    #print 'H1:', H1
-    #print 'H2:', H2
-    H = H1 + H2
-
-    H = H.subs('A', Aye)
-    H = H.subs('B', Bee)
-
-    # print 'Hamiltonian (before subs):', H
-
-    # Accounting for Degeneracy
-
-    H = H.subs(x[0], 1)
-    for s in range(no_col):
-        H = H.subs(x[s],0)
-
-    # print 'Hamiltonian (after subs):', H
-
-    H = H.expand(H)
-
-    #print 'Final Hamiltonian:', H
-
-    Q = dict()
-    for idx in range(len(x)):
-        for jdx in range(len(x)):
-            Q[(idx, jdx)] = 0
-
-    for idx in range(len(x)):
-        for jdx in range(len(x)):
-            if idx != jdx:
-                Q[(idx, jdx)] = round(H.coeff(x[idx]).coeff(x[jdx]),2)
-                Q[(idx, jdx)] = round(H.coeff(x[idx]*x[jdx]),2)
-            else:
-                E = H.coeff(1*x[idx])
-                #Q[(idx,jdx)] = round(H.coeff(x[idx]**2 + H.coeff(x[idx])),2)
-                Q[(idx,jdx)] = round((H.coeff(x[idx]**2) - E.coeff(-1)),2)
-
-    # Creating a Q accounting for degeneracy
-    #print '\nQ:'
-    Qdeg = dict()
-    for idx in range(no_col, no_vert*no_col):
-        #print ''
-        for jdx in range(no_col, no_vert*no_col):
-            #print '%.f' % (Q[(idx,jdx)]),
-            Qdeg[(idx - no_col,jdx - no_col)] = (Q[(idx,jdx)])
-
-    (h, J, offset) = dwave_sapi.qubo_to_ising(Qdeg)
-
-    #print 'H vaules', h
-    #print 'J values', J
-
-    num_reads = 1000
-
-    if solver_type == 'dwave':
-        "Using dwave solver for Graph Colouring problem..."
-        ## PRINT ERROR IF SOLVER ISN'T DEFINED
-        qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
-        q_size = dwave_solver.properties["num_qubits"]
-
-        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
-        embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
-
-        # Sending problem to the solver
-        embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
-        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
-        sols = answers['solutions']
-
-        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
-        sols = answers['solutions']
-        #print answers['energies']
-        # Adding Degeneracy Back In
-        Degenerate = [1] + [-1]*(no_col-1)
-        opt_sol = Degenerate + sols[0]
-
-    elif solver_type == 'isakov':
-        output = defaultdict(list)
-        print "Using Isakov to solve Graph Colouring problem..."
-        # PRINT ERROR IF SOLVER ADDRESS ISN'T DEFINED
-        # PRINT LATTICE FILE
-
-        if os.path.isfile("ColourGraph.lattice") == 1:
-            os.remove("ColourGraph.lattice")
-
-        file = open("ColourGraph.lattice", "w")
-        file.write("ColourGraph Function File")
-
-        # Printing h values to Lattice File
-        for idx, element in enumerate(h):
-            file.write("\n%s %s %s" % (idx, idx, element))
-
-        # Printing J values to Lattice File
-        #print 'J values:',
-        for idx in range(len(h)):
-            #print ' '
-            for jdx in range(len(h)):
-                if (idx, jdx) in J:
-                    file.write("\n%s %s %s" % (idx, jdx, J[(idx, jdx)]))
-                # if i >= j:
-                #     continue
-                # else:
-                #     file.write("\n%s %s %s" % (i, j, J[(i,j)]))
-                #     #file.write("\n%s %s %s" % (j, i, J_dict[(i,j)]))
-
-        file.close()
-
-        lattice_file = "ColourGraph.lattice"
-
-        args = [isakov_address, "-l", lattice_file, "-s", "100", "-r", "1000"]
-        #subprocess.call(args)# Uncomment to run again and print output
-        popen = subprocess.Popen(args, stdout=subprocess.PIPE)
-        #popen.wait()
-        isakov_output = popen.stdout.read()
-        isakov_output = isakov_output.splitlines()
-
-        solution_listoflist = []
-        for s in isakov_output:
-            solution_listoflist.append(s.split())
-
-        for s in solution_listoflist:
-            output['energy'].append(float(s[0]))
-            output['occurences'].append(int(float(s[1])))
-            output['plusorminus'].append(s[2])
-
-        for element in output['plusorminus']:
-            conversion = []
-            for spin in element:
-                if spin == '+':
-                    conversion.append(1)
-                elif spin == '-':
-                    conversion.append(-1)
-                else:
-                    print "It's output something other than +, -"
-            output['solutions'].append(conversion)
-
-        sols = output['solutions']
-        #print 'SOLS', sols
-        #print J
-
-        # Adding Degeneracy Back In
-        Degenerate = [1] + [-1]*(no_col-1)
-        opt_sol = Degenerate + sols[0]
-
-    else:
-        print "COLOUR GRAPH ERROR: Solver type not recognised. Try dwave or isakov"
-
-    print 'Convert to nice format from opt_sol =', opt_sol
-    final_solution = []
-    incorrect = 0
-    for nodes in range(no_vert):
-        colour_sols = []
-        for idx in range(nodes*no_col,(nodes*no_col)+no_col):
-            colour_sols.append(opt_sol[idx])
-            # if opt_sol[idx] == 1:
-            #     nice_output.append(idx - nodes*no_col + 1)
-
-        if 1 not in colour_sols:
-            final_solution.append(0)
-            incorrect += 1
-
-        else:
-            for idx in range(nodes*no_col,(nodes*no_col)+no_col):
-                if opt_sol[idx] == 1:
-                    final_solution.append(idx - nodes*no_col + 1)
-
-    if incorrect > 0:
-        print 'Some nodes were not worthy of a colour.\n' \
-              'ie. There is not a perfect solution to this problem or ' \
-              'the solver did not find one.'
-
-    return final_solution
-
-
-
-# GRAPH PARTITION FUNCTION
-# Imports a variety of graph/mesh/adjacency files, you give the number of partitions,
-# whether to use local or remote solver,
-# Partitions into any number of partitions
-# sub functions include Lucas Hamiltonian for 2^N partitions
-# Your own Hamiltonian for prime numbers etc etc
-
-# Function Splits Adjacency List Into Two Parts Based on the Hamiltonian
-# Requires solver information
-
 def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = None):
+
+    """
+
+    Partition function based on Lucas Hamiltonian. This one can only divide
+    into 2 parts, but requires (Num_Elements - 1) fully connected qubits.
+
+    :param adjlist:
+    :param solver_type:
+    :param dwave_solver:
+    :param isakov_address:
+    :return:
+    """
     edgelist = adjlist_to_edgelist(adjlist)
     graph = nx.Graph()
     graph.add_edges_from(edgelist)
@@ -626,15 +418,25 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
 
     return answers
 
-# A RECURSIVE BISECTION SCHEME FOR 2^N PARTITIONS
-# Based on previously defined function, partition.
-# INPUT recursive_bisection(n,adjlist,solver)
-# N:        - 2^N partitions
-# adjlist   - adjacency list of original graph
-# solver    - D-Wave Solver
-# OUTPUT list of nodes containing partition number
 
 def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
+    """
+    recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
+    A recursive bisection algorithm based on function partition for 2^N
+    partitions.
+
+    Some may claim 'recursive' also pertains to the repetitive cursing that
+    takes places in understanding the code.
+
+    It works just trust me!
+
+    :param n: 2^n partitions
+    :param adjlist: adjacency list of original graph
+    :param solver_type: 'isakov' or 'dwave'
+    :param dwave_solver:
+    :param isakov_address:
+    :return:
+    """
     global output
     global nodes_orig1
 
@@ -650,36 +452,19 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
     elif n == 1:
         results = partition(adjlist, solver_type = solver_type, dwave_solver = dwave_solver, isakov_address = isakov_address)
         opt_sol1 = results['opt_sol']
-        #print '\tOPTSOL len %s and: %s' % (len(opt_sol1), opt_sol1)
-        #print '\tAdjlist len %s before partition: %s' % (len(adjlist), adjlist)
 
         [adjlist_A_orig, adjlist_B_orig] = split_adjlist(opt_sol1,adjlist)
-
-        #print 'BEGIN adjlist investigation'
-        #print 'Length of optsol = %s, Length of Adjlist = %s.' % (len(opt_sol1), len(adjlist))
-        #print 'Length of both adjlists added:', len(adjlist_A_orig) + len(adjlist_B_orig)
 
         try:
             nodes_orig1
         except NameError:
             [nodes_A, nodes_B] = split_nodelist(opt_sol1,adjlist)
-            #print "NODES ORIGINAL, NOT TRICKED YA hahahaha"
-            #print 'Nodes original adjlist', adjlist
-            #print 'opt_sol', opt_sol1
             adjlist_A = adjlist_A_orig
             adjlist_B = adjlist_B_orig
         else:
             [nodes_A, nodes_B] = split_nodelist_fromnodes(opt_sol1,nodes_orig1)
-            #print "Nodes Original:", nodes_orig1
-            #print 'Nodes original adjlist', adjlist
-            #print '\t\topt_sol', opt_sol1
-            #print '\t\t', len(nodes_A) + len(nodes_B)
-            #print "\t\t\t YEAH I WENT THROUGH THE BIT YA INTERESTED IN"
             adjlist_A = enlarge_adjlist(nodes_orig1,adjlist_A_orig)
             adjlist_B = enlarge_adjlist(nodes_orig1,adjlist_B_orig)
-        #print 'Adjlist A', adjlist_A
-        #print "Child Nodes A:", nodes_A
-        #print "Child Nodes B:", nodes_B
 
         print "Number of Qubits:", results['num_qubits']
 
@@ -690,9 +475,6 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
             output['optimal'].append([opt_sol1])
             output['nodes'].append([nodes_A])
             output['nodes'].append([nodes_B])
-            #print '\tNodes A %s and Nodes B%s' % (nodes_A, nodes_B)
-            #print '\tlenoptso %s and %s' % (len(opt_sol1), opt_sol1)
-            #print len(nodes_A) + len(nodes_B)
             output['edge length'].append(results['edge length'])
             output['adjacency'].append(adjlist_A)
             output['adjacency'].append(adjlist_B)
@@ -701,12 +483,6 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
             output['optimal'].append([opt_sol1])
             output['nodes'].append([nodes_A])
             output['nodes'].append([nodes_B])
-            #print 'ELSEEEEEE:'
-            #print 'Nodes A %s and Nodes B%s' % (nodes_A, nodes_B)
-            #print '\tlenoptso %s and %s' % (len(opt_sol1), opt_sol1)
-            #print '\t', len(nodes_A) + len(nodes_B)
-            #print '\tlength of nodes orig', len(nodes_orig1)
-            #print '\t nodes original', nodes_orig1
             output['edge length'].append(results['edge length'])
             output['adjacency'].append(adjlist_A)
             output['adjacency'].append(adjlist_B)
@@ -738,8 +514,6 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
             [part_A_adj, part_B_adj] = split_adjlist_fromnodes(opt_sol,adjlist_en,nodes_orig1)
             [part_A_nodes, part_B_nodes] = split_nodelist_fromnodes(opt_sol, nodes_orig1)
 
-        #print "Adjlist A, wo reduction:", part_A_adj
-
         reduce_adjlist(part_A_nodes, part_A_adj)
         reduce_adjlist(part_B_nodes, part_B_adj)
 
@@ -757,7 +531,24 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
 
     return output
 
+###############################################################################
+# The following make recursive bisection and other functions work
+###############################################################################
+
 def length_edgeboundary(adjlist,opt_sol):
+
+    """
+
+    no_edges = length_edgeboundary(adjlist,opt_sol):
+
+    Counts the number of edges cut between two partitions.
+    Requires networkx not very efficient
+
+    :param adjlist:
+    :param opt_sol:
+    :return: no_edges: integer number of edges
+    """
+
     # Converting Adjacency List to a Graph
     global_edgelist = adjlist_to_edgelist(adjlist)
     graph = nx.Graph()
@@ -775,6 +566,17 @@ def length_edgeboundary(adjlist,opt_sol):
     return no_edges
 
 def adjlist_to_edgelist(adjlist):
+    """
+
+    edgelist = adjlist_to_edgelist(adjlist: Pretty self explanatory. Takes
+    an adjacency list and converts it to an edgelist, how useful!
+
+    The functions inverse is 'edgelist_to_adjlist', naturally!
+
+    :param adjlist: adjacency list
+    :return: edgelist: list of edges
+
+    """
 
     edgelist = []
     for j, y in enumerate(adjlist):
@@ -784,6 +586,17 @@ def adjlist_to_edgelist(adjlist):
     return edgelist
 
 def edgelist_to_adjlist(edgelist):
+    """
+
+    edgelist = adjlist_to_edgelist(adjlist: Pretty self explanatory. Takes
+    an adjacency list and converts it to an edgelist, how useful!
+
+    The functions inverse is 'edgelist_to_adjlist', naturally!
+
+    :param: edgelist: list of edges
+    :return: adjlist: adjacency list
+
+    """
 
     max_iter = 0
     for edge in edgelist:
@@ -796,10 +609,19 @@ def edgelist_to_adjlist(edgelist):
 
     return adjlist
 
-# SPLIT
-# Returns two adjacency lists given the partition and one adjlist
 
 def split_adjlist(opt_sol,adjlist):
+
+    """
+
+    split_adjlist(opt_sol,adjlist): Returns two adjacency lists based on the
+    output from the QC.
+
+    :param opt_sol: a list of [-1, 1, 1, -1... etc
+    :param adjlist: adjacency list
+    :return: two adjacency lists
+
+    """
 
     # Converting Adjacency List to a Graph
     edgelist = adjlist_to_edgelist(adjlist)
@@ -828,6 +650,7 @@ def split_adjlist(opt_sol,adjlist):
     adjlist_B = graphB.adjacency_list()
 
     return [adjlist_A, adjlist_B]
+
 
 def split_nodelist(opt_sol,adjlist):
 
@@ -948,6 +771,7 @@ def enlarge_adjlist(nodes,adjlist):
 def qmosesnodelist_to_pymetisoutput(nodes_list):
 
     """
+    qmosesnodelist_to_pymetisoutput(nodes_list):
     Converts a list of list of nodes in each partition into a similar style
     output to what PyMETIS does.
 
@@ -969,10 +793,19 @@ def qmosesnodelist_to_pymetisoutput(nodes_list):
             output[element] = part_num + 1
     return output
 
-# Converts MeshPy Triangle 2D or Tetrahedral 3D elements list or array to
-# adjacency list for partitioning
-# Output: adjacency list
+
 def meshpytrielements_to_adjlist(meshpy_elements):
+
+    """
+
+    meshpytrielements_to_adjlist(meshpy_elements):
+    Converts MeshPy Triangle 2D or Tetrahedral 3D elements list or array to
+
+    :param meshpy_elements:
+    :return:
+
+    """
+
     if type(meshpy_elements) != list:
         meshpy_elements = meshpy_elements.tolist()
     elif type(meshpy_elements) == list:
@@ -980,8 +813,10 @@ def meshpytrielements_to_adjlist(meshpy_elements):
     else:
         print 'Weird Input Try again.'
         exit()
+
     # Dimensions: checking if triangular, or tetrahedral
     dimensions = len(meshpy_elements[0])-1
+
     # Creates an empty adjacency list
     adjlist = [[] for x in xrange(len(meshpy_elements))]
     globallistno = 0
@@ -1010,6 +845,7 @@ def meshpytrielements_to_adjlist(meshpy_elements):
                                 #print '\t\t\t Added count'
                 sublistno += 1
         globallistno += 1
+
     return adjlist
 
 
@@ -1074,7 +910,6 @@ def edge_resultsanalysis(list_of_lists_of_nodes,edgelist, num_parts):
     return (edges_between, edges_each, total_edges)
 
 
-
 def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
 
     """
@@ -1129,15 +964,6 @@ def energy_from_solution(h, J, opt_sol, offset = None):
 
     hvalue_energy = sum([a*b for a, b in zip(opt_sol, h)])
 
-    # print 'J values:',
-    # for i in range(len(h)):
-    #     print ''
-    #     for j in range(len(h)):
-    #         if (i,j) not in J:
-    #             print 'NA',
-    #         else:
-    #             print J[(i, j)],
-
     # calculating J value energy
     Jvalue_energy = 0
     for idx in range(len(h)):
@@ -1154,6 +980,176 @@ def energy_from_solution(h, J, opt_sol, offset = None):
         total_energy = Jvalue_energy + hvalue_energy + offset
 
     return total_energy
+
+##############################################################################
+# MISC FUNCTIONS
+##############################################################################
+
+
+def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_address = None):
+    """
+
+    Colour Graph: it's not a matter of colouring between the lines, it's a
+    matter of colouring the nodes on the lines (or edges).
+
+    sympy implementation of the graph coloring Hamiltonian found in Lucas
+
+    :param no_col: number of colours
+    :param adjlist:
+    :param solver_type:
+    :param dwave_solver:
+    :param isakov_address:
+    :return:
+    """
+    no_vert = len(adjlist)  # Number of vertices
+
+    Aye = 1
+    Bee = 1
+
+    A = Symbol('A')
+    B = Symbol('B')
+
+    x = symbols('x(1:%d\,1:%d)' % (((no_vert + 1) , (no_col + 1))))
+
+    H1 = 0
+    term = 1
+    for v in range(no_vert):
+        for i in range(no_col):
+            v += 1 # FIX THIS!
+            i += 1 # FIX THIS!
+            term -= x[((v - 1) * no_col) + i - 1]
+            v -= 1 # FIX THIS!
+            i -= 1 # FIX THIS!
+        term = term**2
+        H1 += term
+        term = 1
+    H1 = A * H1
+
+    edgelist = adjlist_to_edgelist(adjlist)
+
+    # removing duplicate edges
+    for edge in edgelist:
+        if (edge[1],edge[0]) in edgelist:
+            edgelist.remove((edge[1],edge[0]))
+
+    H2 = 0
+    for edge in edgelist:
+        for colour in range(no_col):
+            H2 += x[((edge[0] - 1) * no_col) + colour - 1]*x[((edge[1] - 1) * no_col) + colour - 1]
+    H2 = (B)*H2 # Dividing by 2 as edgelist defines edges twice
+
+    #print 'H1:', H1
+    #print 'H2:', H2
+    H = H1 + H2
+
+    H = H.subs('A', Aye)
+    H = H.subs('B', Bee)
+
+    # print 'Hamiltonian (before subs):', H
+
+    # Accounting for Degeneracy
+
+    H = H.subs(x[0], 1)
+    for s in range(no_col):
+        H = H.subs(x[s],0)
+
+    # print 'Hamiltonian (after subs):', H
+
+    H = H.expand(H)
+
+    #print 'Final Hamiltonian:', H
+
+    Q = dict()
+    for idx in range(len(x)):
+        for jdx in range(len(x)):
+            Q[(idx, jdx)] = 0
+
+    for idx in range(len(x)):
+        for jdx in range(len(x)):
+            if idx != jdx:
+                Q[(idx, jdx)] = round(H.coeff(x[idx]).coeff(x[jdx]),2)
+                Q[(idx, jdx)] = round(H.coeff(x[idx]*x[jdx]),2)
+            else:
+                E = H.coeff(1*x[idx])
+                #Q[(idx,jdx)] = round(H.coeff(x[idx]**2 + H.coeff(x[idx])),2)
+                Q[(idx,jdx)] = round((H.coeff(x[idx]**2) - E.coeff(-1)),2)
+
+    # Creating a Q accounting for degeneracy
+    #print '\nQ:'
+    Qdeg = dict()
+    for idx in range(no_col, no_vert*no_col):
+        #print ''
+        for jdx in range(no_col, no_vert*no_col):
+            #print '%.f' % (Q[(idx,jdx)]),
+            Qdeg[(idx - no_col,jdx - no_col)] = (Q[(idx,jdx)])
+
+    (h, J, offset) = dwave_sapi.qubo_to_ising(Qdeg)
+
+    #print 'H vaules', h
+    #print 'J values', J
+
+    num_reads = 1000
+
+    print "Using %s to solve Graph Colouring Problem..." % (solver_type)
+    if solver_type == 'dwave':
+        ## PRINT ERROR IF SOLVER ISN'T DEFINED
+        qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
+        q_size = dwave_solver.properties["num_qubits"]
+
+        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
+        embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
+
+        # Sending problem to the solver
+        embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+
+    elif solver_type == 'isakov':
+
+        answers = isakovlib.solve_Ising(h, J, offset)
+
+        # adding degeneracy
+        negative = '-'
+        deg_plusminus = '+' + negative*(no_col-1)
+        answers['plusminus'] = [deg_plusminus + sol for sol in answers['plusminus']]
+
+    else:
+        print "COLOUR GRAPH ERROR: Solver type not recognised. Try dwave or isakov"
+
+    # adding degeneracy back in
+    deg = [1] + [-1]*(no_col-1)
+    answers['solutions'] = [deg + sol for sol in answers['solutions']]
+
+    # adding offset from Q to h, J conversion back to energies
+    answers['energies'] = [energy + offset for energy in answers['energies']]
+
+    opt_sol = answers['solutions'][0]
+
+    final_solution = []
+    incorrect = 0
+    for nodes in range(no_vert):
+        colour_sols = []
+        for idx in range(nodes*no_col,(nodes*no_col)+no_col):
+            colour_sols.append(opt_sol[idx])
+            # if opt_sol[idx] == 1:
+            #     nice_output.append(idx - nodes*no_col + 1)
+
+        if 1 not in colour_sols:
+            final_solution.append(0)
+            incorrect += 1
+
+        else:
+            for idx in range(nodes*no_col,(nodes*no_col)+no_col):
+                if opt_sol[idx] == 1:
+                    final_solution.append(idx - nodes*no_col + 1)
+
+    if incorrect > 0:
+        print 'Some nodes were not worthy of a colour.\n' \
+              'ie. There is not a perfect solution to this problem or ' \
+              'the solver did not find one.'
+
+    return final_solution
 
 # FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
 # Using graph partitioning, or graph colouring methods, even clique methods
