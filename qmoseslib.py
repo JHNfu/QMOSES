@@ -43,7 +43,7 @@ import copy as copy
 from sympy import *
 import isakovlib
 
-
+# tristan checked
 ##############################################################################
 # VARIOUS FUNCTIONS FOR MESH PARTITIONING
 ##############################################################################
@@ -178,6 +178,9 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
         answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
         answers['num_reads'] = num_reads
 
+        # adding offset from Q to h, J conversion back to energies
+        answers['energies'] = [energy + offset for energy in answers['energies']]
+
     elif solver_type == 'isakov':
 
         answers = isakovlib.solve_Ising(h, J, offset = offset)
@@ -193,9 +196,6 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
     # adding degeneracy back in
     deg = [1] + [-1]*(no_part-1)
     answers['solutions'] = [deg + sol for sol in answers['solutions']]
-
-    # adding offset from Q to h, J conversion back to energies
-    answers['energies'] = [energy + offset for energy in answers['energies']]
 
     # Creating Pymetis style node output based on optimal solution
     opt_sol = answers['solutions'][0]
@@ -1055,10 +1055,8 @@ def energy_from_solution(h, J, opt_sol, offset = None):
     Jvalue_energy = 0
     for idx in range(len(h)):
         for jdx in range(len(h)):
-            if (idx,jdx) in J and idx > jdx:
-                # print J[(i, j)],
-                # print 'hlen', len(h),
-                # print idx, jdx, opt_sol[idx*jdx], J[(idx, jdx)]
+            #print idx, jdx
+            if (idx,jdx) in J:
                 Jvalue_energy += J[(idx, jdx)]*opt_sol[idx]*opt_sol[jdx]
 
     if offset == None:
