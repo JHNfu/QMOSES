@@ -45,96 +45,6 @@ import isakovlib
 
 
 ##############################################################################
-# FUNCTIONS FOR NESTED DISSECTION FOR FILL-REDUCING ON SPARSE MATRICS
-##############################################################################
-
-
-def find_edgeseparators(node_list,edgelist):
-
-    """
-
-    edgeseparator = find_edgeseparators(node_list,edgelist)
-
-    :param node_list: list of lists, with each list containing
-    the nodes in each partition
-    :param edgelist: all the edges of the graph
-    :return: edge_separators: the separators between the nodes in a list
-    :return: possible_node_separators: a list of all nodes on the edge separators
-
-    """
-
-    # removing duplicate edges
-    for edge in edgelist:
-        if (edge[1],edge[0]) in edgelist:
-            edgelist.remove((edge[1],edge[0]))
-
-    n = 1
-
-    # If you are reading this, forgive the original coder. This is horrible.
-    # Please update append to the following comment.
-    # total_time_wasted_trying_to_understand = 0 hours 10 minutes
-    edge_separators = []
-    possible_node_separators = []
-    for part_1 in range(2**n):
-        for part_2 in range(2**n):
-            if part_1 != part_2:
-                for node_A in node_list[part_1]:
-                    for node_B in node_list[part_2]:
-                        if (node_A, node_B) in edgelist:
-                            edge_separators.append((node_A, node_B))
-                            if node_A not in possible_node_separators:
-                                possible_node_separators.append(node_A)
-                            if node_B not in possible_node_separators:
-                                possible_node_separators.append(node_B)
-                        elif (node_A, node_B) in edgelist:
-                            edge_separators.append((node_B, node_A))
-                            if node_A not in possible_node_separators:
-                                possible_node_separators.append(node_A)
-                            if node_B not in possible_node_separators:
-                                possible_node_separators.append(node_B)
-
-    return edge_separators, possible_node_separators
-
-
-def vertexcover(adjlist):
-    '''
-
-    Vertex cover generates the h, J values for vertex cover Hamiltonian in
-    Lucas.
-    This was converted from a QUBO to an Ising spin problem by hand
-
-    :param input: input can be an edge list of adjlist
-    :return:
-    '''
-
-    edgelist = adjlist_to_edgelist(adjlist)
-
-    N = len(adjlist)
-    num_edges = len(edgelist)
-
-    # coefficients
-    A = (N)*0.5
-    B = 1
-
-    # determining optimiser term (B term)
-    h = []
-    for idx in range(N):
-        h.append(0.5*B)
-
-    # determining penalty term (A term)
-    J = dict()
-    for edge in edgelist:
-        h[edge[0]] += -0.25*A
-        h[edge[1]] += -0.25*A
-        J[(edge[0],edge[1])] = 0.25*A
-
-    # offset energy
-    offset = 0.5*B*N + (num_edges*0.25)
-
-    return h, J, offset
-
-
-##############################################################################
 # VARIOUS FUNCTIONS FOR MESH PARTITIONING
 ##############################################################################
 
@@ -533,6 +443,96 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
         exit()
 
     return output
+
+
+##############################################################################
+# FUNCTIONS FOR NESTED DISSECTION FOR FILL-REDUCING ON SPARSE MATRICS
+##############################################################################
+
+
+def find_edgeseparators(node_list,edgelist):
+
+    """
+
+    edgeseparator = find_edgeseparators(node_list,edgelist)
+
+    :param node_list: list of lists, with each list containing
+    the nodes in each partition
+    :param edgelist: all the edges of the graph
+    :return: edge_separators: the separators between the nodes in a list
+    :return: possible_node_separators: a list of all nodes on the edge separators
+
+    """
+
+    # removing duplicate edges
+    for edge in edgelist:
+        if (edge[1],edge[0]) in edgelist:
+            edgelist.remove((edge[1],edge[0]))
+
+    n = 1
+
+    # If you are reading this, forgive the original coder. This is horrible.
+    # Please update append to the following comment.
+    # total_time_wasted_trying_to_understand = 0 hours 10 minutes
+    edge_separators = []
+    possible_node_separators = []
+    for part_1 in range(2**n):
+        for part_2 in range(2**n):
+            if part_1 != part_2:
+                for node_A in node_list[part_1]:
+                    for node_B in node_list[part_2]:
+                        if (node_A, node_B) in edgelist:
+                            edge_separators.append((node_A, node_B))
+                            if node_A not in possible_node_separators:
+                                possible_node_separators.append(node_A)
+                            if node_B not in possible_node_separators:
+                                possible_node_separators.append(node_B)
+                        elif (node_A, node_B) in edgelist:
+                            edge_separators.append((node_B, node_A))
+                            if node_A not in possible_node_separators:
+                                possible_node_separators.append(node_A)
+                            if node_B not in possible_node_separators:
+                                possible_node_separators.append(node_B)
+
+    return edge_separators, possible_node_separators
+
+
+def vertexcover(adjlist):
+    '''
+
+    Vertex cover generates the h, J values for vertex cover Hamiltonian in
+    Lucas.
+    This was converted from a QUBO to an Ising spin problem by hand
+
+    :param input: input can be an edge list of adjlist
+    :return:
+    '''
+
+    edgelist = adjlist_to_edgelist(adjlist)
+
+    N = len(adjlist)
+    num_edges = len(edgelist)
+
+    # coefficients
+    A = (N)*0.5
+    B = 1
+
+    # determining optimiser term (B term)
+    h = []
+    for idx in range(N):
+        h.append(0.5*B)
+
+    # determining penalty term (A term)
+    J = dict()
+    for edge in edgelist:
+        h[edge[0]] += -0.25*A
+        h[edge[1]] += -0.25*A
+        J[(edge[0],edge[1])] = 0.25*A
+
+    # offset energy
+    offset = 0.5*B*N + (num_edges*0.25)
+
+    return h, J, offset
 
 
 ###############################################################################
