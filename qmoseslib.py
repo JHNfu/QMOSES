@@ -514,7 +514,8 @@ def vertexcover(adjlist):
     num_edges = len(edgelist)
 
     # coefficients
-    A = (N)*0.5
+    # A = (N)*0.5
+    A = 1
     B = 1
 
     # determining optimiser term (B term)

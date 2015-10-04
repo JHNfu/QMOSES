@@ -8,10 +8,10 @@ from cvxopt import spmatrix, amd
 
 from qmoseslib import *
 
-# test = nx.erdos_renyi_graph(15,0.2)
-# adjlist = test.adjacency_list()
-adjlist = [[12, 5], [12, 2, 4], [1, 9], [12, 4, 6], [8, 1, 3, 11], [0, 9], [11, 3], [10, 13, 14], [4, 14], [2, 5], [11, 12, 7], [10, 4, 14, 6], [0, 1, 10, 3], [14, 7], [8, 11, 13, 7]]
-print adjlist
+test = nx.erdos_renyi_graph(20,0.5)
+adjlist = test.adjacency_list()
+#adjlist = [[12, 5], [12, 2, 4], [1, 9], [12, 4, 6], [8, 1, 3, 11], [0, 9], [11, 3], [10, 13, 14], [4, 14], [2, 5], [11, 12, 7], [10, 4, 14, 6], [0, 1, 10, 3], [14, 7], [8, 11, 13, 7]]
+#print adjlist
 
 # Pymetis nested dissection
 n = 1
