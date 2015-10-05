@@ -5,6 +5,7 @@ import scipy.sparse as sps
 import matplotlib.pyplot as plt
 from six.moves import range
 from cvxopt import spmatrix, amd
+from networkx.algorithms import bipartite
 
 from qmoseslib import *
 
@@ -37,6 +38,8 @@ edge_separators, possible_node_separators = find_edgeseparators(node_list,edgeli
 # Finding node separator from edge separator using networkx function
 G = nx.Graph()
 G.add_edges_from(edge_separators)
+print 'Is the graph bipartite?'
+print(bipartite.is_bipartite(G))
 matching = nx.bipartite.maximum_matching(G)
 vertex_cover = list(nx.bipartite.to_vertex_cover(G, matching))
 # print 'edge separators:', edge_separators

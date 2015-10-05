@@ -497,7 +497,7 @@ def find_edgeseparators(node_list,edgelist):
     return edge_separators, possible_node_separators
 
 
-def vertexcover(adjlist):
+def vertexcover(adjlist, Node_A = None, Node_B = None):
     '''
 
     Vertex cover generates the h, J values for vertex cover Hamiltonian in
@@ -516,7 +516,8 @@ def vertexcover(adjlist):
     # coefficients
     # A = (N)*0.5
     A = 1
-    B = 1
+    B = 2
+    C = 0.25
 
     # determining optimiser term (B term)
     h = []
@@ -529,6 +530,37 @@ def vertexcover(adjlist):
         h[edge[0]] += -0.25*A
         h[edge[1]] += -0.25*A
         J[(edge[0],edge[1])] = 0.25*A
+
+    # fixer for problem of many subgraphs
+    for idx in range(N):
+        for jdx in range(N):
+            if idx != jdx:
+                if (idx, jdx) in J.keys():
+                    J[(idx, jdx)] = J[(idx, jdx)] + 0.25
+                else:
+                    J[(idx, jdx)] = 0.25
+
+    for idx in range(N):
+        h[idx] = h[idx] + 0.25
+
+
+    # Extra term to pick solution to ensure equal nodes from list A and List B
+    if Node_A != None and Node_B != None:
+        for nidx in Node_A:
+            for njdx in Node_A:
+                if nidx != njdx:
+                    J[(nidx, njdx)] = J[(nidx, njdx)] + 2*C
+
+        for nidx in Node_B:
+            for njdx in Node_B:
+                if nidx != njdx:
+                    J[(nidx, njdx)] = J[(nidx, njdx)] + 2*C
+
+        for nidx in Node_A:
+            for njdx in Node_B:
+                if nidx != njdx:
+                    J[(nidx, njdx)] = J[(nidx, njdx)] - 2*C
+
 
     # offset energy
     offset = 0.5*B*N + (num_edges*0.25)
