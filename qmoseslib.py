@@ -965,6 +965,44 @@ def meshpytrielements_to_adjlist(meshpy_elements):
     return adjlist
 
 
+def normalise_weightings(h, J, offset):
+    '''
+
+    normalise_weightings finds the maximum coupling weight and then normalises
+    all the weightings to that value.
+
+    e.g. h = [3, 1.5, 1, 0.5, 2], h_new = [1, 0.5, 0.3333, 0.1667, 0.6667]
+
+    :param h: H weightings in a list
+    :param J: J coupling strengths in a dictionary
+    :param offset: offset energy
+    :return: Returns the altered input
+    '''
+
+    # finding max in h
+    maximum = max(h)
+
+    # finding max in J
+    for key, value in J.items():
+        if value > maximum:
+            maximum = value
+
+    # normalising h values
+    h = [x/maximum for x in h]
+
+    # normalising J values
+    for key, value in J.items():
+        J[key] = value / maximum
+
+    factor = 1 / maximum
+    print 'Normalising weightings by factor:', factor
+
+    # not certain this is technically correct
+    offset *= factor
+
+    return h, J, offset
+
+
 ##############################################################################
 # FUNCTIONS FOR RESULTS ANALYSES
 ##############################################################################
@@ -1098,7 +1136,6 @@ def energy_from_solution(h, J, opt_sol, offset = None):
         total_energy = Jvalue_energy + hvalue_energy + offset
 
     return total_energy
-
 
 ##############################################################################
 # MISC FUNCTIONS - ATTEMPTS AT OTHER THINGS
