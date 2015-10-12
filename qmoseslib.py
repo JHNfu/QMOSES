@@ -34,9 +34,15 @@ from __future__ import division
 # THE SOFTWARE.
 ##############################################################################
 
+import scipy.linalg as sl
+import scipy.sparse as sp
+from random import randint
 import networkx as nx
-import numpy as nm
+from networkx.algorithms import bipartite
+import numpy as np
+import nxmetis
 import dwave_sapi
+import time
 from dwave_sapi import local_connection, find_embedding
 from collections import defaultdict
 import copy as copy
@@ -257,8 +263,7 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
 
     # Bias for each qubit
     h = [2*A] * num_qubits
-
-    num_reads = 1000 # number of reads from D-Wave
+    num_reads = 10000 # number of reads from D-Wave
     annealing_time  = 20
 
     J = dict()
@@ -282,25 +287,25 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
             if i >= j:
                 J[(i, j)] = 0.0
 
+    # expected energy
+    X = num_vertices + len(edgelist)*0.5
+
     answers = dict()
+    errors = []
     if solver_type == 'dwave':
+
+
         print "\nSolving Partition with D-Wave Local Solver"
-        ## PRINT ERROR IF SOLVER ISN'T DEFINED
+
         qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
         q_size = dwave_solver.properties["num_qubits"]
 
-        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
         embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
-
-        # Sending problem to the solver
+        MaxChain = max(len(L) for L in embeddings)
+        print 'The Maximum Chain for the Embedding is %s long.' % (MaxChain)
         embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
         answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
         sols = answers['solutions']
-
-        map(lambda sols: sols.append(1), answers['solutions'])
-        opt_sol = sols[0]
-
-        output['opt_sol'] = opt_sol
 
     elif solver_type == 'isakov':
         answers = isakovlib.solve_Ising(h, J)
@@ -322,12 +327,19 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
     answers['opt_sol'] = opt_sol
 
     # finding length of edge boundary
-    answers['edge length'] = length_edgeboundary(adjlist, opt_sol)
+    answers['edge_length'] = length_edgeboundary(adjlist, opt_sol)
 
     # creating node list
     answers['node_list'] = split_nodelist(opt_sol, adjlist)
 
     answers['num_qubits'] = num_qubits
+    answers['num_reads'] = num_reads
+    answers['expected_energy'] = X
+
+    answers['h'] = h
+    answers['J'] = J
+
+    answers['adjlist'] = adjlist
 
     return answers
 
@@ -561,11 +573,356 @@ def vertexcover(adjlist, Node_A = None, Node_B = None):
                 if nidx != njdx:
                     J[(nidx, njdx)] = J[(nidx, njdx)] - 2*C
 
+    # offset energy
+    offset = 0.5*B*N + (num_edges*0.25)
+
+    return h, J, offset
+
+
+def original_vertexcover(adjlist):
+    '''
+
+    Vertex cover generates the h, J values for vertex cover Hamiltonian in
+    Lucas.
+    This was converted from a QUBO to an Ising spin problem by hand
+
+    :param input: input can be an edge list of adjlist
+    :return:
+    '''
+
+    edgelist = adjlist_to_edgelist(adjlist)
+
+    N = len(adjlist)
+    num_edges = len(edgelist)
+
+    # coefficients
+    A = 2
+    B = 1
+
+    # determining optimiser term (B term)
+    h = []
+    for idx in range(N):
+        h.append(0.5*B)
+
+    # determining penalty term (A term)
+    J = dict()
+    for edge in edgelist:
+        h[edge[0]] += -0.25*A
+        h[edge[1]] += -0.25*A
+        J[(edge[0],edge[1])] = 0.25*A
 
     # offset energy
     offset = 0.5*B*N + (num_edges*0.25)
 
     return h, J, offset
+
+
+def nesteddissection(matrix, solver_type = 'isakov', isakov_address = None):
+    '''
+
+    Nested Dissection computes an ordering for fill reduction. This is based on
+    graph partitioning Hamiltonian and an amended vertex cover Hamiltonian
+    from Lucas.
+
+    Additionally prepares a benchmark against nxmetis Nested Dissection
+
+    :param matrix: takes a numpy array
+    :param solver_type: choose solver type
+    :param isakov_address: choose isakov address
+    :return: answers dictionary
+    '''
+
+    print 'Is matrix positive definite?',
+    if is_pos_def(matrix) is true:
+        print 'Yes'
+    else:
+        print 'Nested Dissection Error: matrix not positive definite.'
+        exit()
+
+    G = nx.from_numpy_matrix(matrix)
+    adjlist = G.adjacency_list()
+
+    adjlist = remove_diagonals(adjlist)
+
+    ######################################################################
+    # Step 0: Benchmark against import nxmetis Nested Dissection
+    ######################################################################
+
+    AMD_ordering = nxmetis.node_nested_dissection(G)
+
+    ######################################################################
+    # Step 1: Identify edge separators with Graph Partitioning
+    ######################################################################
+
+    #answers = partition(adjlist, solver_type='dwave', dwave_solver = solver)
+    answers = partition(adjlist, solver_type = 'isakov', isakov_address = isakov_address)
+
+    node_list = answers['node_list']
+    opt_list = qmosesnodelist_to_pymetisoutput(node_list)
+
+    edgelist = adjlist_to_edgelist(adjlist)
+    edge_separators, possible_node_separators = find_edgeseparators(node_list,edgelist)
+
+    ######################################################################
+    # Step 2: Identify node separators with Vertex Cover
+    ######################################################################
+
+    # Finding node separator from edge separator using networkx function
+    G_sub = nx.Graph()
+    G_sub.add_edges_from(edge_separators)
+    print 'Is the graph of edge separators bipartite?', bipartite.is_bipartite(G_sub)
+    matching = nx.bipartite.maximum_matching(G_sub)
+    vertex_cover_nx = list(nx.bipartite.to_vertex_cover(G_sub, matching))
+    Snx = vertex_cover_nx
+
+    # finding sides of bipartite graph
+    X, Y = bipartite.sets(G_sub)
+    NodesA = list(X)
+    NodesB = list(Y)
+
+    # Finding node separator using Vertex Cover Hamiltonian
+    edge_sep_adjlist = edgelist_to_adjlist(edge_separators)
+    h, J, offset = vertexcover(edge_sep_adjlist, Node_A = NodesA, Node_B = NodesB)
+
+    answer = isakovlib.solve_Ising(h,J,offset = offset, solver_address = isakov_address)
+
+    # adding offset from Q to h, J conversion back to energies
+    answer['energies'] = [energy + offset for energy in answer['energies']]
+
+    vertex_cover_qc = sol_to_vertexcover(answer['solutions'][0])
+    S = vertex_cover_qc
+
+    ####################################################################
+    # Step 3: Now to rearrange the bloody thing
+    ####################################################################
+
+    # REMOVE NODE SEPARATORS S TO CREATE Q and P
+    Qnodes = [x for x in node_list[0] if x not in S]
+    Pnodes = [x for x in node_list[1] if x not in S]
+
+    Q_new = [idx for idx in range(len(Qnodes))]
+    P_new = [idx+len(Qnodes) for idx in range(len(Pnodes))]
+
+    # Ensures S_new is in correct order
+    S_new = [(len(adjlist) - len(S) + x) for x in range(len(S))]
+
+    RowOrdering = Qnodes + Pnodes + S
+    NodeList_new = Q_new + P_new + S_new
+
+    def ordering_to_perm_matrix(p):
+        '''
+
+        Based on a list of row orderings, produces a numpy array
+        as the permutation matrix
+
+        :param p: List of row orderings
+        :return: numpy array permutation matrix
+        '''
+
+        perm_list = []
+        size = len(p)
+        for row in p:
+            perm_row = [0]*size
+            perm_row[row] = 1
+            perm_list.append(perm_row)
+
+        perm_matrix = np.array(perm_list)
+        return perm_matrix
+
+    def reorder_matrix(perm_matrix, M):
+        '''
+
+        Reorders matrix based on permutation matrix
+        P^T * A * P
+
+        :param perm_matrix:
+        :param M:
+        :return:
+        '''
+        res = np.dot(np.transpose(perm_matrix), M)
+        reordered_matrix = np.dot(res,perm_matrix)
+        return reordered_matrix
+
+    ####################################################################
+    # Comparing Results
+    ####################################################################
+
+    dw_perm_matrix = ordering_to_perm_matrix(RowOrdering)
+    dw_matrix = reorder_matrix(dw_perm_matrix, matrix)
+    print 'Is Nested Dissection reordering positive definite?', is_pos_def(dw_matrix)
+
+    amd_perm_matrix = ordering_to_perm_matrix(AMD_ordering)
+    amd_matrix = reorder_matrix(amd_perm_matrix, matrix)
+    print 'Is Approx. Min. Degree reordering positive definite?', is_pos_def(amd_matrix)
+
+    Lorig = sl.cholesky(matrix) # defaults on upper triangular
+    nz_count_orig = np.count_nonzero(Lorig)
+
+    Ldw = sl.cholesky(dw_matrix)
+    nz_count_dw = np.count_nonzero(Ldw)
+
+    Lamd = sl.cholesky(amd_matrix)
+    nz_count_amd = np.count_nonzero(Lamd)
+
+    print 'No. Non-Zero Elements (Lower the better)'
+    print 'No Reordering:', nz_count_orig
+    print 'Dw Reordering:', nz_count_dw
+    print 'AMD Reorderin:', nz_count_amd
+
+    ####################################################################
+    # Printing/saving results results
+    ####################################################################
+
+    print 'AMD Ordering:', AMD_ordering
+    print 'DW  Ordering:', RowOrdering
+
+    answer['Q'] = Qnodes
+    answer['P'] = Pnodes
+    answer['S'] = S
+    answer['edge_separators'] = edge_separators
+    answer['ordering_amd'] = AMD_ordering
+    answer['ordering_dw'] = RowOrdering
+    answer['adjlist'] = adjlist
+    answer['original_matrix'] = matrix
+    answer['matrix_amd'] = amd_matrix
+    answer['matrix_dw'] = dw_matrix
+    answer['nz_count_orig'] = nz_count_orig
+    answer['nz_count_dw'] = nz_count_dw
+    answer['nz_count_amd'] = nz_count_amd
+
+    return answer
+
+
+def remove_diagonals(adjlist):
+    '''
+
+    Removes nodes that link to themselves.
+
+    This only confuses partition function.
+
+    :param adjlist:
+    :return:
+    '''
+
+    for idx, node in enumerate(adjlist):
+        for adj in node:
+            if adj == idx:
+                node.remove(adj)
+
+    return adjlist
+
+
+def sol_to_vertexcover(opt_sol):
+    '''
+
+    Simply converts solution from vertex cover into a list of node of the
+    vertex cover.
+
+    :param opt_sol:
+    :return:
+    '''
+    vertex_cover = []
+    for idx, node in enumerate(opt_sol):
+        if node == 1:
+            vertex_cover.append(idx)
+
+    return vertex_cover
+
+# needs improvement
+def adjmatrix_to_cvxformat(node_list,adjmatrix):
+    '''
+
+    Takes a <class 'scipy.sparse.csr.csr_matrix'> and returns the format
+    required to make a spmatrix in the cvxopt module.
+
+    :param node_list:
+    :param adjmatrix:
+    :return:
+    '''
+    nonzero = []
+    idx_loc = []
+    jdx_loc = []
+    for idx in range(len(node_list)):
+        for jdx in range(len(node_list)):
+            if adjmatrix[(idx,jdx)] != 0:
+                nonzero.append(adjmatrix[(idx,jdx)])
+                idx_loc.append(idx)
+                jdx_loc.append(jdx)
+    return(nonzero, idx_loc, jdx_loc)
+
+
+def sparseBanded(rank, bandwidth=1):
+    '''
+
+    Function generates a random sparse symmetric positive definite banded
+    matrix.
+
+    Needs some work - advise to use Rogues Wathen
+    See: https://github.com/macd/rogues
+
+    :param size:
+    :return:
+    '''
+
+    max_val = 5
+
+    center = [randint(8, max_val*(bandwidth+1)) for r in xrange(rank)]
+
+    sides = []
+    bandwidths = [0]
+    for side in range(bandwidth):
+        sides.append([randint(1, max_val) for r in xrange(rank)])
+        bandwidths.append(side+1)
+
+    data = np.vstack((center, sides))
+    diags = np.array(bandwidths)
+
+    S = sp.spdiags(data, diags, rank, rank).toarray()
+    S = (S + rank*sp.identity(rank))
+    S = (S + S.transpose())/2  # ensures matrix is symmetric
+
+    return S
+
+
+def sparseSym(rank, density=0.01, format='csr', dtype=None, random_state=None):
+
+    '''
+
+    Function generates a random sparse symmetric positive definite matrix by
+    first generating a sparse matrix using scipy.sparse, followed by ensuring
+    it's symmetrical by adding its transpose.
+
+    This is followed by ensuring the matrix is diagonally dominant and hence
+    that it is symmetric positive definite by adding an identity matrix
+    multiplied by the size.
+
+    :param rank: Size of matrix
+    :param density:
+    :param format:
+    :param dtype:
+    :param random_state:
+    :return: S3: returns numpy array
+    '''
+
+    density = density / (2.0 - 1.0/rank)
+    S = sp.rand(rank, rank, density=density, format=format, dtype=dtype, random_state=random_state)
+    S = (S + S.transpose())/2  # ensures matrix is symmetric
+    S = (S + rank*sp.identity(rank))
+    S = S.A # converts it to numpy array
+
+    return S
+
+
+def is_pos_def(x):
+    '''
+
+    Checks if matrix is positive definite by checking if all
+    eigenvalues are greater than zero
+
+    :param x:
+    :return:
+    '''
+    return np.all(np.linalg.eigvals(x) > 0)
 
 
 ###############################################################################
@@ -1001,7 +1358,6 @@ def normalise_weightings(h, J, offset):
     offset *= factor
 
     return h, J, offset
-
 
 ##############################################################################
 # FUNCTIONS FOR RESULTS ANALYSES
