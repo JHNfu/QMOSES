@@ -55,7 +55,7 @@ import isakovlib
 ##############################################################################
 
 
-def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
+def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
     """
 
     Moses Partitioner: implementation of the flagship Hamiltonian for this
@@ -78,13 +78,25 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
 
     no_vert = len(adjlist)
 
-    if load == None:
+    print 'Number of Elements', no_vert
+
+    #### adjust load vector so that one partition yields an extra node
+    if no_vert % no_part == 1 and load == None:
+
+        # adjust load vector so that one partition yields an extra node
+
+        LoadVector = [i * (no_vert+1)/(no_vert*no_part) for i in [1]*(no_part-1)]
+        LoadVector.append(1 - sum(LoadVector))
+
+    elif load == None:
         LoadVector = [i * (1/no_part) for i in [1]*no_part]
         print 'Assuming homogenous system...'
+
     elif len(load) == no_part and sum(load) == 1:
         print 'Partitioning heterogenous system...'
         LoadVector = load
         print 'Load Vector:', LoadVector
+
     else:
         print 'Moses Partitioner Error: Load Vector is incorrect type.' \
               '\t Load Vector should be a list of length(no. of partitions) and sum to 1.'
@@ -93,13 +105,32 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
 
     # MESH PARTITIONING HAMILTONIAN HARD-CODE
     edgelist = adjlist_to_edgelist(adjlist)
+    no_edges = len(edgelist)
+    print 'Number of edges', no_edges
     graph = nx.Graph()
     graph.add_edges_from(edgelist)
     graph.add_nodes_from(range(len(adjlist)))
 
-    A = 2*no_vert
-    B = no_vert*0.1 # KEEP AT ONE
-    C = 0.5*no_vert
+    # # for larger mesh
+    # A = 2*no_edges # ensures equal nodes in each partition
+    # B = 0.01*no_vert # ensures each has a partition
+    # C = 2*no_vert # ensures edge bondary minimised.
+
+
+    # Following coefficients worked superbly on small graphs
+    A = 0.5*no_edges # ensures each has a partition
+    B = 1 # ensures equal nodes
+    C = 1 # ensures edge bondary minimised.
+
+    # # Following coefficients worked superbly on small graphs
+    # A = 0.5*no_edges # ensures each has a partition
+    # B = 1 # ensures equal nodes
+    # C = 0.1*no_vert  # ensures edge bondary minimised.
+
+    # # Following coefficients worked superbly on small graphs
+    # A = 0.5*no_edges # ensures each has a partition
+    # B = 1 # ensures equal nodes
+    # C = 0.3*no_vert  # ensures edge bondary minimised.
 
     print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
 
@@ -181,11 +212,18 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
         answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
         sols = answers['solutions']
 
+        t0 = time.time()
         answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+        t1 = time.time()
+        answers['timing'] = t1 - t0
+
         answers['num_reads'] = num_reads
 
         # adding offset from Q to h, J conversion back to energies
         answers['energies'] = [energy + offset for energy in answers['energies']]
+        answers['hvalues'] = h
+        answers['jvalues'] = J
+        answers['offset'] = offset
 
     elif solver_type == 'isakov':
 
@@ -205,6 +243,8 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
 
     # Creating Pymetis style node output based on optimal solution
     opt_sol = answers['solutions'][0]
+    print "Optimal Solution", opt_sol
+
     final_solution = []
     incorrect = 0
     for nodes in range(no_vert):
@@ -212,7 +252,7 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
         for idx in range(nodes*no_part,(nodes*no_part)+no_part):
             colour_sols.append(opt_sol[idx])
 
-        if sum(colour_sols) == -1:
+        if sum(colour_sols) == (no_part*-1)+2:
             for idx in range(nodes*no_part,(nodes*no_part)+no_part):
                 if opt_sol[idx] == 1:
                     final_solution.append(idx - nodes*no_part + 1)
@@ -221,6 +261,8 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
             final_solution.append(0)
             incorrect += 1
 
+    print "Final_Solution", final_solution
+
     answers['nodelist'] = final_solution
     answers['adjlist'] = adjlist
     answers['num_parts'] = no_part
@@ -228,12 +270,14 @@ def mosespartitioner(no_part,adjlist, load = None, solver_type = None, dwave_sol
     answers['solver'] = solver_type
     answers['Q'] = Q_HC
     answers['Qdeg'] = Qdeg
+    answers['A'] = A
+    answers['B'] = B
+    answers['C'] = C
 
     return answers
 
 
-def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = None):
-
+def partition(adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
     """
 
     Partition function based on Lucas Hamiltonian. This one can only divide
@@ -245,6 +289,7 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
     :param isakov_address:
     :return:
     """
+
     edgelist = adjlist_to_edgelist(adjlist)
     graph = nx.Graph()
     graph.add_edges_from(edgelist)
@@ -271,6 +316,10 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
     for i in range(num_qubits):
         for j in range(num_qubits):
             J[(i, j)] = 2*A
+
+    print "Edgelist", edgelist
+    print 'Length h', len(h)
+    print 'h', h
 
     # Set up the existing connections to have a value of 1.5
     for i,j in edgelist:
@@ -300,11 +349,20 @@ def partition(adjlist,solver_type = None, dwave_solver = None, isakov_address = 
         qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
         q_size = dwave_solver.properties["num_qubits"]
 
+        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
         embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
-        MaxChain = max(len(L) for L in embeddings)
-        print 'The Maximum Chain for the Embedding is %s long.' % (MaxChain)
+        print "Embeddings", embeddings
+        # Sending problem to the solver
         embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
         answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+
+
+        MaxChain = max(len(L) for L in embeddings)
+        print 'The Maximum Chain for the Embedding is %s long.' % (MaxChain)
+
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+
+        answers['maxchain'] = MaxChain
         sols = answers['solutions']
 
     elif solver_type == 'isakov':
@@ -378,6 +436,8 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
         results = partition(adjlist, solver_type = solver_type, dwave_solver = dwave_solver, isakov_address = isakov_address)
         opt_sol1 = results['opt_sol']
 
+        print opt_sol1
+
         [adjlist_A_orig, adjlist_B_orig] = split_adjlist(opt_sol1,adjlist)
 
         try:
@@ -396,19 +456,31 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
         try:
             output
         except NameError:
-            output = defaultdict(list)
-            output['optimal'].append([opt_sol1])
-            output['nodes'].append([nodes_A])
-            output['nodes'].append([nodes_B])
-            output['edge length'].append(results['edge length'])
-            output['adjacency'].append(adjlist_A)
-            output['adjacency'].append(adjlist_B)
+
+            output = dict()
+            output['optimal'] = opt_sol1
+
+            output['nodes'] = []
+            output['nodes'].append(nodes_A)
+            output['nodes'].append(nodes_B)
+
+            output['edge_length'] = []
+            output['edge_length'].append(results['edge_length'])
+
+            output['adjacency'] = []
+            output['adjacency'] = adjlist_A
+            output['adjacency'] = adjlist_B
+
+            output['num_qubits'] = []
             output['num_qubits'].append(results['num_qubits'])
+
         else:
-            output['optimal'].append([opt_sol1])
-            output['nodes'].append([nodes_A])
-            output['nodes'].append([nodes_B])
-            output['edge length'].append(results['edge length'])
+            #output['optimal'].append([opt_sol1])
+            output['nodes'].append(nodes_A)
+            output['nodes'].append(nodes_B)
+            print "EDGE LENGTH", output['edge_length']
+            print "EDGE LENGTH TYPE", type(output['edge_length'])
+            output['edge_length'].append(results['edge_length'])
             output['adjacency'].append(adjlist_A)
             output['adjacency'].append(adjlist_B)
             output['num_qubits'].append(results['num_qubits'])
@@ -453,6 +525,8 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
     else:
         print "Recursive Bisection Error: I'm sorry, wrong input, ya goose."
         exit()
+
+    output['adjlist'] = adjlist
 
     return output
 
@@ -527,9 +601,9 @@ def vertexcover(adjlist, Node_A = None, Node_B = None):
 
     # coefficients
     # A = (N)*0.5
-    A = 1
-    B = 2
-    C = 0.25
+    A = 3
+    B = 1.5
+    C = 0.25*1/len(edgelist)
 
     # determining optimiser term (B term)
     h = []
@@ -538,6 +612,11 @@ def vertexcover(adjlist, Node_A = None, Node_B = None):
 
     # determining penalty term (A term)
     J = dict()
+    for idx in range(N):
+        for jdx in range(N):
+            J[(idx,jdx)] = 0
+
+
     for edge in edgelist:
         h[edge[0]] += -0.25*A
         h[edge[1]] += -0.25*A
@@ -1409,6 +1488,9 @@ def edge_resultsanalysis(list_of_lists_of_nodes,edgelist, num_parts):
                 edges_between[(part_1,part_2)] = no_edges
                 total_edges += no_edges
 
+    # for some reason, after testing its half what the solution says
+    total_edges = total_edges*0.5
+
     edges_each = []
     for results in edges_between.keys():
         sum = 0
@@ -1420,6 +1502,7 @@ def edge_resultsanalysis(list_of_lists_of_nodes,edgelist, num_parts):
         #print 'Y', results
         edges_each.append(sum)
     edges_each = edges_each[:num_parts]
+
     return (edges_between, edges_each, total_edges)
 
 
@@ -1446,7 +1529,7 @@ def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
         result = 0
         for i in any_list:
             result += (mean - i) ** 2
-        return result
+        return result/2
 
     result_list = []
     for part_1 in range(num_parts):
