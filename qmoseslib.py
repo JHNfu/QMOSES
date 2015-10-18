@@ -1018,6 +1018,7 @@ def nesteddissection(matrix, solver_type = 'isakov', isakov_address = None):
     :param solver_type: choose solver type
     :param isakov_address: choose isakov address
     :return: answers dictionary
+
     '''
 
     print 'Is matrix positive definite?',
@@ -1889,180 +1890,90 @@ def energy_from_solution(h, J, opt_sol, offset = None):
 # MISC FUNCTIONS - ATTEMPTS AT OTHER THINGS
 ##############################################################################
 
-# needs serious improvement and tests
-# based on sympy, not ideal
-def colourgraph(no_col,adjlist,solver_type = None, dwave_solver = None, isakov_address = None):
-    """
+def colourgraph(no_col,adjlist):
+    '''
 
     Colour Graph: it's not a matter of colouring between the lines, it's a
     matter of colouring the nodes on the lines (or edges).
 
-    sympy implementation of the graph coloring Hamiltonian found in Lucas
+    Hardcoded implementation of the graph coloring Hamiltonian found in Lucas
 
-    :param no_col: number of colours
+    Does not consider permutation symmetry and likely there will be degeneracy
+    in the solution.
+
+    If an energy of -1*no_vert is not acquired, there is likely no solution
+    for that number of colours. e.g. 20 nodes, opt sol should yield -20
+
+    :param no_col:
     :param adjlist:
-    :param solver_type:
-    :param dwave_solver:
-    :param isakov_address:
     :return:
-    """
+    '''
+
     no_vert = len(adjlist)  # Number of vertices
+    no_part = no_col
 
-    Aye = 1
-    Bee = 1
-
-    A = Symbol('A')
-    B = Symbol('B')
-
-    x = symbols('x(1:%d\,1:%d)' % (((no_vert + 1) , (no_col + 1))))
-
-    H1 = 0
-    term = 1
-    for v in range(no_vert):
-        for i in range(no_col):
-            v += 1 # FIX THIS!
-            i += 1 # FIX THIS!
-            term -= x[((v - 1) * no_col) + i - 1]
-            v -= 1 # FIX THIS!
-            i -= 1 # FIX THIS!
-        term = term**2
-        H1 += term
-        term = 1
-    H1 = A * H1
+    no_qubits = (no_vert*no_part)
 
     edgelist = adjlist_to_edgelist(adjlist)
 
-    # removing duplicate edges
-    for edge in edgelist:
-        if (edge[1],edge[0]) in edgelist:
-            edgelist.remove((edge[1],edge[0]))
+    # Coefficients
+    A = 1
+    B = 1
 
-    H2 = 0
-    for edge in edgelist:
-        for colour in range(no_col):
-            H2 += x[((edge[0] - 1) * no_col) + colour - 1]*x[((edge[1] - 1) * no_col) + colour - 1]
-    H2 = (B)*H2 # Dividing by 2 as edgelist defines edges twice
+    # TERM 1: The term A ensures every vertex has one colour, taken from Moses
+    # Partitioner
 
-    #print 'H1:', H1
-    #print 'H2:', H2
-    H = H1 + H2
+    Q1 = dict()
+    for idx in range(no_qubits):
+        for jdx in range(no_qubits):
+            Q1[(idx, jdx)] = 0
 
-    H = H.subs('A', Aye)
-    H = H.subs('B', Bee)
+    # The diagonals
+    for idx in range(no_qubits):
+        Q1[(idx, idx)] = -2*A + 1*A # 1*B is for (x1)^2 terms
 
-    # print 'Hamiltonian (before subs):', H
+    # might be possible solution without itertools
+    from itertools import combinations
+    for vertdx in range(no_vert):
+        for Q1_key in list(combinations(range(vertdx*no_part, (vertdx+1)*no_part), 2)):
+                Q1[Q1_key] = 2*A
 
-    # Accounting for Degeneracy
+    # print "Printing QA or Q1, whatever ya wanna call it"
+    #
+    # for idx in range(no_qubits):
+    #     print ''
+    #     for jdx in range(no_qubits):
+    #         print Q1[(idx,jdx)],
 
-    H = H.subs(x[0], 1)
-    for s in range(no_col):
-        H = H.subs(x[s],0)
+    # TERM 2: Energy penalty each time an connects two vertices of the same colour
 
-    # print 'Hamiltonian (after subs):', H
+    Q2 = dict()
+    for idx in range(no_qubits):
+        for jdx in range(no_qubits):
+            Q2[(idx, jdx)] = 0
 
-    H = H.expand(H)
+    for i, j in edgelist:
+        if j > i:
+            for part in range(no_part):
 
-    #print 'Final Hamiltonian:', H
+                idx = i*no_part + part
+                jdx = j*no_part + part
 
-    Q = dict()
-    for idx in range(len(x)):
-        for jdx in range(len(x)):
-            Q[(idx, jdx)] = 0
+                Q2[(idx, jdx)] += 1*B
 
-    for idx in range(len(x)):
-        for jdx in range(len(x)):
-            if idx != jdx:
-                Q[(idx, jdx)] = round(H.coeff(x[idx]).coeff(x[jdx]),2)
-                Q[(idx, jdx)] = round(H.coeff(x[idx]*x[jdx]),2)
-            else:
-                E = H.coeff(1*x[idx])
-                #Q[(idx,jdx)] = round(H.coeff(x[idx]**2 + H.coeff(x[idx])),2)
-                Q[(idx,jdx)] = round((H.coeff(x[idx]**2) - E.coeff(-1)),2)
+    # print "\nPrinting QB or Q2, the edges one"
 
-    # Creating a Q accounting for degeneracy
-    #print '\nQ:'
-    Qdeg = dict()
-    for idx in range(no_col, no_vert*no_col):
-        #print ''
-        for jdx in range(no_col, no_vert*no_col):
-            #print '%.f' % (Q[(idx,jdx)]),
-            Qdeg[(idx - no_col,jdx - no_col)] = (Q[(idx,jdx)])
+    # for idx in range(no_qubits):
+    #     print ''
+    #     for jdx in range(no_qubits):
+    #         print Q2[(idx,jdx)],
 
-    (h, J, offset) = dwave_sapi.qubo_to_ising(Qdeg)
+    # THE FINAL Q
+    Q_final = dict()
+    for idx in range(no_qubits):
+        print ''
+        for jdx in range(no_qubits):
+            Q_final[(idx, jdx)] = Q1[(idx, jdx)] + Q2[(idx, jdx)]
+            print Q_final[(idx, jdx)],
 
-    #print 'H vaules', h
-    #print 'J values', J
-
-    num_reads = 1000
-
-    print "Using %s to solve Graph Colouring Problem..." % (solver_type)
-    if solver_type == 'dwave':
-        ## PRINT ERROR IF SOLVER ISN'T DEFINED
-        qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
-        q_size = dwave_solver.properties["num_qubits"]
-
-        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
-        embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
-
-        # Sending problem to the solver
-        embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
-        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
-
-        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
-
-    elif solver_type == 'isakov':
-
-        answers = isakovlib.solve_Ising(h, J, offset)
-
-        # adding degeneracy
-        negative = '-'
-        deg_plusminus = '+' + negative*(no_col-1)
-        answers['plusminus'] = [deg_plusminus + sol for sol in answers['plusminus']]
-
-    else:
-        print "COLOUR GRAPH ERROR: Solver type not recognised. Try dwave or isakov"
-
-    # adding degeneracy back in
-    deg = [1] + [-1]*(no_col-1)
-    answers['solutions'] = [deg + sol for sol in answers['solutions']]
-
-    # adding offset from Q to h, J conversion back to energies
-    answers['energies'] = [energy + offset for energy in answers['energies']]
-
-    opt_sol = answers['solutions'][0]
-
-    final_solution = []
-    incorrect = 0
-    for nodes in range(no_vert):
-        colour_sols = []
-        for idx in range(nodes*no_col,(nodes*no_col)+no_col):
-            colour_sols.append(opt_sol[idx])
-            # if opt_sol[idx] == 1:
-            #     nice_output.append(idx - nodes*no_col + 1)
-
-        if 1 not in colour_sols:
-            final_solution.append(0)
-            incorrect += 1
-
-        else:
-            for idx in range(nodes*no_col,(nodes*no_col)+no_col):
-                if opt_sol[idx] == 1:
-                    final_solution.append(idx - nodes*no_col + 1)
-
-    if incorrect > 0:
-        print 'Some nodes were not worthy of a colour.\n' \
-              'ie. There is not a perfect solution to this problem or ' \
-              'the solver did not find one.'
-
-    return final_solution
-
-
-
-
-
-# FILL-REDUCING ORDERINGS FUNCTION FOR SPARSE MATRICES
-# Using graph partitioning, or graph colouring methods, even clique methods
-
-# MESSAGE SCHEDULING GRAPH COLOURING PROBLEM
-
-# QUANTUM LATTICE GAS for FUN DEMONSTRATION perhaps
+    return Q_final
