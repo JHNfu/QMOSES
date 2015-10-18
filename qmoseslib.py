@@ -55,6 +55,311 @@ import isakovlib
 ##############################################################################
 
 
+def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
+    """
+
+    In hours of attempts to ensure, mosespartitioner was written correctly,
+    the following was written to improve readability of the code.
+
+    Each term is expanded into a Q and then added together at the end.
+
+    This includes changes accounting for degeneracy (ie. that one element is
+    allocated to partition one).
+
+    Ultimately, the original function and this one yield the same solutions
+    for the terms; ensuring balance of nodes, and term ensure each node is
+    allocated a partition.
+
+    The difference occurs in ensuring the edge boundary
+    is minimised. When accounting for degeneracy there are some diagonal terms
+    that don't occur in the original function.
+
+    The additional change is that the LoadVectors are appropriately applied
+    to the their respectively partitions, ie. for node 2 (x2) for three
+    partitions: X2,1 is affect by LoadVector1, and X2,2, is affected by
+    LoadVector2 etc
+
+    NOTE ON COEFFICIENTS:
+    A : Attributed to term that ensures element balance
+    B : Attributed to term that ensures one in every element
+    C : Attributed to term that minimises edgeboundary
+
+    Continuation of previous description..
+    Moses Partitioner: implementation of the flagship Hamiltonian for this
+    library of impeccable functions.
+    Moses partitioner can do a  lot, you know? Partition into a positive
+    integer number of parts, which is real handy. Additionally it can be used
+    for Load Balancing on heterogeneous systems.
+
+    Requires (Num_Partitions - 1) * Num_Elements fully connected qubits.
+
+    :param no_part: number of partitions
+    :param adjlist: adjacency list
+    :param load: load vector consisting of Num_Partitions elements and summing
+    to one
+    :param solver_type: string or 'isakov' or 'dwave'
+    :param dwave_solver: solver class, local connection etc
+    :param isakov_address: solver address e.g., '= r"C:..........'
+    :return: well, quite a lot really.
+    """
+
+    no_vert = len(adjlist)
+    no_qubits = no_vert*no_part
+
+    print 'Number of Elements', no_vert
+
+    #### adjust load vector so that one partition yields an extra node
+    if no_vert % no_part == 1 and load == None:
+
+        # adjust load vector so that one partition yields an extra node
+
+        LoadVector = [i * (no_vert+1)/(no_vert*no_part) for i in [1]*(no_part-1)]
+        LoadVector.append(1 - sum(LoadVector))
+
+    elif load == None:
+        LoadVector = [i * (1/no_part) for i in [1]*no_part]
+        print 'Assuming homogenous system...'
+
+    elif len(load) == no_part and sum(load) == 1:
+        print 'Partitioning heterogenous system...'
+        LoadVector = load
+        print 'Load Vector:', LoadVector
+
+    else:
+        print 'Moses Partitioner Error: Load Vector is incorrect type.' \
+              '\t Load Vector should be a list of length(no. of partitions) and sum to 1.'
+
+    print 'LoadVector:', LoadVector
+
+    # MESH PARTITIONING HAMILTONIAN HARD-CODE
+    edgelist = adjlist_to_edgelist(adjlist)
+    no_edges = len(edgelist)
+    print 'Number of edges', no_edges
+    graph = nx.Graph()
+    graph.add_edges_from(edgelist)
+    graph.add_nodes_from(range(len(adjlist)))
+
+    # NOTE ON COEFFICIENTS:
+    # A : Attributed to term that ensures element balance
+    # B : Attributed to term that ensures one in every element
+    # C : Attributed to term that minimises edgeboundary
+
+    B = 2 # Ensure everyone gets a partition
+    A = 1 # Correct share of nodes
+    C = 1 # Minimise edge boundary
+
+    print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
+
+    # SETTING UP Q DICT
+    Q1 = dict()
+    for idx in range(no_qubits):
+        for jdx in range(no_qubits):
+            Q1[(idx, jdx)] = 0
+
+    # TERM 1: ENSURE CORRECT NODE SHARE IN LOAD BALANCE
+
+    Q1 = dict()
+    for idx in range(no_qubits):
+        for jdx in range(no_qubits):
+            Q1[(idx, jdx)] = 0
+
+    # The off diagonals
+    for vert_ydx in range(no_vert):
+        for partdx in range(no_part):
+            #print partdx
+            for vert_xdx in range(no_vert):
+                jdx = (vert_ydx * no_part) + partdx
+                idx = (vert_xdx * no_part) + partdx
+                if idx > jdx:
+                    Q1[(jdx,idx)] = 2*A
+
+    # The diagonals
+    for vertdx in range(no_vert):
+        for partdx in range(no_part):
+
+            idx = (vertdx*no_part) + partdx
+
+            if partdx == 0:
+                # Energy on first partition is higher due to degeneracy
+                Q1[(idx,idx)] = 1*A - 2*no_vert*LoadVector[partdx]*A + 2*A # 1A for the square terms
+            else:
+                # Energy on remaining partitions is lower due to degeneracy
+                Q1[(idx,idx)] = (1*A) - 2*no_vert*LoadVector[partdx]*A # 1A for the square terms
+
+    # print "TERM 1 EVEN NODE SHARE:"
+    # for idx in range(no_qubits):
+    #     print ' '
+    #     for jdx in range(no_qubits):
+    #         print Q1[(idx, jdx)],
+
+    print "\n"
+
+    # TERM 2: ENSURE EVERY NODE GETS A PARTITION
+    Q2 = dict()
+    for idx in range(no_qubits):
+        for jdx in range(no_qubits):
+            Q2[(idx, jdx)] = 0
+
+    # The diagonals
+    for idx in range(no_qubits):
+        Q2[(idx, idx)] = -2*B + 1*B # 1*B is for (x1)^2 terms
+
+    # might be possible solution without itertools
+    from itertools import combinations
+    for vertdx in range(no_vert):
+        for Q2_key in list(combinations(range(vertdx*no_part, (vertdx+1)*no_part), 2)):
+                Q2[Q2_key] = 2*B
+
+    # print "Printing Q2: everynode gets a partition"
+    # for idx in range(no_qubits):
+    #     print ''
+    #     for jdx in range(no_qubits):
+    #         print Q2[(idx, jdx)],
+
+    # TERM 3: ENSURE EDGE BOUNDARY IS MINIMISED
+    Q3 = dict()
+    for idx in range(no_qubits):
+        for jdx in range(no_qubits):
+            Q3[(idx, jdx)] = 0
+
+
+    combo = list(combinations(range(0, no_part), 2))
+    print combo
+    for i, j in edgelist:
+        #print "i %s, j %s" % (i, j)
+        for idx, jdx in combo:
+            if i == 0:
+                Q3_jdx = jdx + (j*no_part)
+                Q3[(Q3_jdx, Q3_jdx)] = 1*C
+            elif j == 0:
+                Q3_idx = idx + (i*no_part)
+                Q3[(Q3_idx, Q3_idx)] = 1*C
+
+    for i, j in edgelist:
+        print i, j
+        #print "i %s, j %s" % (i, j)
+        if j > i:
+            for part_i in range(no_part):
+                for part_j in range(part_i+1,no_part):
+                    Q3_idx = (i*no_part) + part_i
+                    Q3_jdx = (j*no_part) + part_j
+                    Q3[(Q3_idx, Q3_jdx)] = 1
+
+            for part_i in range(no_part):
+                for part_j in range(part_i+1,no_part):
+                    Q3_jdx = (j*no_part) + part_i
+                    Q3_idx = (i*no_part) + part_j
+                    Q3[(Q3_idx, Q3_jdx)] = 1*C
+    # print edgelist
+    # print "Printing Q3"
+    # for idx in range(no_qubits):
+    #     print ''
+    #     for jdx in range(no_qubits):
+    #         print Q3[(idx, jdx)],
+
+    # BRINGIN' IT ALL TOGETHER
+    Q_final = dict()
+    for idx in range(no_qubits):
+        print ''
+        for jdx in range(no_qubits):
+            Q_final[(idx, jdx)] = Q1[(idx, jdx)] + Q2[(idx, jdx)] + Q3[(idx, jdx)]
+            print Q_final[(idx, jdx)],
+
+    # REMOVE DEGENERATE SPIN
+    Q_deg = dict()
+    for idx in range(no_part, no_vert*no_part):
+        # print ''
+        for jdx in range(no_part, no_vert*no_part):
+            # print '%.f' % (Q[(idx,jdx)]),
+            Q_deg[(idx - no_part,jdx - no_part)] = (Q_final[(idx,jdx)])
+
+    # print "\n\nQ with degeneracy:"
+    # for idx in range(no_qubits-no_part):
+    #     print ''
+    #     for jdx in range(no_qubits-no_part):
+    #         print Q_deg[(idx, jdx)],
+
+    (h, J, offset) = dwave_sapi.qubo_to_ising(Q_deg)
+
+    num_reads = 1000
+
+    if solver_type == 'dwave':
+        qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
+        q_size = dwave_solver.properties["num_qubits"]
+
+        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
+        embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
+
+        # Sending problem to the solver
+        embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+        sols = answers['solutions']
+
+        t0 = time.time()
+        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
+        t1 = time.time()
+        answers['timing'] = t1 - t0
+
+        answers['num_reads'] = num_reads
+
+        # adding offset from Q to h, J conversion back to energies
+        answers['energies'] = [energy + offset for energy in answers['energies']]
+        answers['hvalues'] = h
+        answers['jvalues'] = J
+        answers['offset'] = offset
+
+    elif solver_type == 'isakov':
+
+        answers = isakovlib.solve_Ising(h, J, offset = offset)
+
+        # adding degeneracy
+        negative = '-'
+        deg_plusminus = '+' + negative*(no_part-1)
+        answers['plusminus'] = [deg_plusminus + sol for sol in answers['plusminus']]
+
+    else:
+        print "Moses Partitioner Error: Solver type not recognised. Try dwave or isakov"
+
+    # adding degeneracy back in
+    deg = [1] + [-1]*(no_part-1)
+    answers['solutions'] = [deg + sol for sol in answers['solutions']]
+
+    # Creating Pymetis style node output based on optimal solution
+    opt_sol = answers['solutions'][0]
+    print "Optimal Solution", opt_sol
+
+    final_solution = []
+    incorrect = 0
+    for nodes in range(no_vert):
+        colour_sols = []
+        for idx in range(nodes*no_part,(nodes*no_part)+no_part):
+            colour_sols.append(opt_sol[idx])
+
+        if sum(colour_sols) == (no_part*-1)+2:
+            for idx in range(nodes*no_part,(nodes*no_part)+no_part):
+                if opt_sol[idx] == 1:
+                    final_solution.append(idx - nodes*no_part + 1)
+                    # print final_solution
+        else:
+            final_solution.append(0)
+            incorrect += 1
+
+    print "Final_Solution", final_solution
+
+    answers['nodelist'] = final_solution
+    answers['adjlist'] = adjlist
+    answers['num_parts'] = no_part
+    answers['load_vector'] = LoadVector
+    answers['solver'] = solver_type
+    answers['Q'] = Q
+    answers['Qdeg'] = Q_deg
+    answers['A'] = A
+    answers['B'] = B
+    answers['C'] = C
+
+    return answers
+
+
 def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
     """
 
@@ -111,16 +416,19 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
     graph.add_edges_from(edgelist)
     graph.add_nodes_from(range(len(adjlist)))
 
-    # # for larger mesh
-    # A = 2*no_edges # ensures equal nodes in each partition
-    # B = 0.01*no_vert # ensures each has a partition
-    # C = 2*no_vert # ensures edge bondary minimised.
+    # for larger mesh
+    A = 0.5*no_edges # Ensure everyone gets a partition
+    B = 1 # Correct share of nodes
+    C = 1 # Minimise edge boundary
 
+    # A: Ensure everyone gets a partition
+    # B: Correct share of nodes
+    # C: Minimise edge boundary
 
     # Following coefficients worked superbly on small graphs
-    A = 0.5*no_edges # ensures each has a partition
-    B = 1 # ensures equal nodes
-    C = 1 # ensures edge bondary minimised.
+    # A = 0.5*no_edges # ensures each has a partition
+    # B = 1 # ensures equal nodes
+    # C = 1 # ensures edge bondary minimised.
 
     # # Following coefficients worked superbly on small graphs
     # A = 0.5*no_edges # ensures each has a partition
@@ -359,9 +667,10 @@ def partition(adjlist, solver_type = None, dwave_solver = None, isakov_address =
 
         MaxChain = max(len(L) for L in embeddings)
         print 'The Maximum Chain for the Embedding is %s long.' % (MaxChain)
-
+        t0 = time.time()
         answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
-
+        t1 = time.time()
+        answers['timing'] = t1 - t0
         answers['maxchain'] = MaxChain
         sols = answers['solutions']
 
