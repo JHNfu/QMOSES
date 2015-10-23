@@ -1,4 +1,5 @@
 from __future__ import division
+from __future__ import absolute_import
 ##############################################################################
 # +++++++++++++++++++ Q-MOSES - A D-WAVE Mesh Partitioner +++++++++++++++++++
 ##############################################################################
@@ -48,6 +49,9 @@ from collections import defaultdict
 import copy as copy
 from sympy import *
 import isakovlib
+import meshpy.triangle as triangle
+import numpy.linalg as la
+from six.moves import range
 
 # tristan checked
 ##############################################################################
@@ -2082,3 +2086,84 @@ def colourgraph(no_col,adjlist):
             #print Q_final[(idx, jdx)],
 
     return Q_final
+
+
+def generate_AirfoilMesh():
+    '''
+
+    Based on meshpy.triangle, function generates an example of a 2D
+    triangular mesh about an axisymmetric airfoil
+
+    Its returns include the following...
+
+    :return:
+    '''
+
+    def needs_refinement(vertices, area):
+        bary = np.sum(np.array(vertices), axis=0)/3
+        max_area = 0.5 + (la.norm(bary, np.inf)-1)*0.05
+        return bool(area > max_area)
+
+    # Points define the shape
+    points_outer = [(-2,1.25),(2,1.25),(2,-1.25),(-2,-1.25)]
+    points_inner = [(-1,1),(1,1),(1,-1),(-1,-1)]
+
+    def round_trip_connect(start, end):
+        return [(i, i+1) for i in range(start, end)] + [(end, start)]
+
+    # NACA something something
+
+    points_inner = [(1, 0),(0.9500, 0.0114),(0.9000, 0.0208),(0.8000, 0.0375),(0.7000, 0.0518), (0.6000,0.0636),(0.5000,0.0724),(0.4000, 0.0780),(0.3000, 0.0788),
+                    (0.2500, 0.0767), (0.2, 0.0726), (0.1500, 0.0661),(0.1000, 0.0563),(0.0750, 0.0496),(0.0500, 0.0413),(0.0250, 0.0299),(0.0125, 0.0215),(0, 0),(0.0125, -0.0165),
+                    (0.0250, -0.0227), (0.0500, -0.0301), (0.0750, -0.0346),(0.1000, -0.0375),(0.1500, -0.0410),(0.2, -0.0423),(0.2500, -0.0422),(0.3, -0.0412),(0.4, -0.0380),
+                    (0.5, -0.0334),(0.6, -0.0276),(0.7, -0.0214),(0.9, -0.0082),(0.95, -0.0048),(1, 0)]
+
+    print points_inner
+
+    new_tup = []
+    for tup in points_inner:
+        tupzero = tup[0]*3 - 1.5
+        tupone = tup[1]*3
+        new_tup.append((tupzero, tupone))
+        tup = (x*2 for x in tup)
+
+    points_inner = new_tup
+
+    points = []
+    points.extend(points_inner)
+    points.extend(points_outer)
+
+    # Facets define the line between two points, denoted by the number of node as
+    # outlined in the points vector
+    # facets_outer = [(4,5),(5,6),(6,7),(7,4)]
+    # facets_inner = [(0,1),(1,2),(2,3),(3,0)]
+    facets_inner = round_trip_connect(0,len(points_inner)-1)
+    facets_outer = round_trip_connect(len(facets_inner), len(points_outer)+len(facets_inner)-1)
+
+    facets = []
+    facets.extend(facets_inner)
+    facets.extend(facets_outer)
+
+    meshinfo = triangle.MeshInfo()
+    # Holes define which shape (series of faces creating a closed shape)
+    meshinfo.set_holes([(0.01,0.01)])
+    meshinfo.set_points(points)
+    meshinfo.set_facets(facets)
+
+    mesh = triangle.build(meshinfo, refinement_func=needs_refinement)
+    #mesh = triangle.build(meshinfo)
+
+    mesh_points = np.array(mesh.points)
+    mesh_tris = np.array(mesh.elements)
+    mesh_tris_list = mesh_tris.tolist()
+
+    output = dict()
+    output['mesh_points'] = mesh_points
+    output['mesh_tris'] = mesh_tris
+    output['mesh_tris_list'] = mesh_tris_list
+    output['mesh'] = mesh
+
+    adjlist = meshpytrielements_to_adjlist(mesh_tris_list)
+    output['adjlist'] = adjlist
+
+    return output
