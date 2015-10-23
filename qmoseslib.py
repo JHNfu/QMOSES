@@ -45,48 +45,23 @@ import nxmetis
 import dwave_sapi
 import time
 from dwave_sapi import local_connection, find_embedding
-from collections import defaultdict
 import copy as copy
-from sympy import *
-import isakovlib
-import meshpy.triangle as triangle
-import numpy.linalg as la
-from six.moves import range
-
-# tristan checked
+from sympy import *                 #          /
+import isakovlib                    #         /
+import meshpy.triangle as triangle  #        /
+import numpy.linalg as la           #       /
+from six.moves import range         # \    /
+                                    #  \  /     tristan checked
+                                    #   \/      TiCk of approval!
 ##############################################################################
 # VARIOUS FUNCTIONS FOR MESH PARTITIONING
 ##############################################################################
 
 
-def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
+def mosespartitioner(no_part, adjlist, A = 1, B = 3, C = 2,
+                     load = None, solver_type = None,
+                     dwave_solver = None, isakov_address = None):
     """
-
-    In hours of attempts to ensure, mosespartitioner was written correctly,
-    the following was written to improve readability of the code.
-
-    Each term is expanded into a Q and then added together at the end.
-
-    This includes changes accounting for degeneracy (ie. that one element is
-    allocated to partition one).
-
-    Ultimately, the original function and this one yield the same solutions
-    for the terms; ensuring balance of nodes, and term ensure each node is
-    allocated a partition.
-
-    The difference occurs in ensuring the edge boundary
-    is minimised. When accounting for degeneracy there are some diagonal terms
-    that don't occur in the original function.
-
-    The additional change is that the LoadVectors are appropriately applied
-    to the their respectively partitions, ie. for node 2 (x2) for three
-    partitions: X2,1 is affect by LoadVector1, and X2,2, is affected by
-    LoadVector2 etc
-
-    NOTE ON COEFFICIENTS:
-    A : Attributed to term that ensures element balance
-    B : Attributed to term that ensures one in every element
-    C : Attributed to term that minimises edgeboundary
 
     Continuation of previous description..
     Moses Partitioner: implementation of the flagship Hamiltonian for this
@@ -95,7 +70,12 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
     integer number of parts, which is real handy. Additionally it can be used
     for Load Balancing on heterogeneous systems.
 
-    Requires (Num_Partitions - 1) * Num_Elements fully connected qubits.
+    Requires Num_Partitions * Num_Elements fully connected qubits.
+
+    NOTE ON COEFFICIENTS:
+    A : Attributed to term that ensures element balance
+    B : Attributed to term that ensures one in every element
+    C : Attributed to term that minimises edgeboundary
 
     :param no_part: number of partitions
     :param adjlist: adjacency list
@@ -105,9 +85,17 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
     :param dwave_solver: solver class, local connection etc
     :param isakov_address: solver address e.g., '= r"C:..........'
     :return: well, quite a lot really.
+
     """
 
     print "Running MOSES Partitioner..."
+
+    print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
+
+    # NOTE ON COEFFICIENTS:
+    # A : Attributed to term that ensures element balance
+    # B : Attributed to term that ensures one in every element
+    # C : Attributed to term that minimises edge boundary
 
     no_vert = len(adjlist)
     no_qubits = no_vert*no_part
@@ -138,7 +126,6 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
         modulo = no_vert % no_part
 
         Bal_1 = (no_vert - modulo)/no_part
-
         Expected_Balance = [Bal_1]*no_part
 
         for idx in range(modulo):
@@ -170,17 +157,6 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
     graph = nx.Graph()
     graph.add_edges_from(edgelist)
     graph.add_nodes_from(range(len(adjlist)))
-
-    # NOTE ON COEFFICIENTS:
-    # A : Attributed to term that ensures element balance
-    # B : Attributed to term that ensures one in every element
-    # C : Attributed to term that minimises edgeboundary
-
-    B = 3 # Ensure everyone gets a partition
-    A = 1 # Correct share of nodes
-    C = 2 # Minimise edge boundary
-
-    print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
 
     # SETTING UP Q DICT
     Q1 = dict()
@@ -264,7 +240,7 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
                 for part_j in range(part_i+1,no_part):
                     Q3_idx = (i*no_part) + part_i
                     Q3_jdx = (j*no_part) + part_j
-                    Q3[(Q3_idx, Q3_jdx)] = 1
+                    Q3[(Q3_idx, Q3_jdx)] = 1*C
 
             for part_i in range(no_part):
                 for part_j in range(part_i+1,no_part):
@@ -275,7 +251,7 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
     # print edgelist
     # print "Printing Q3"
     # for idx in range(no_qubits):
-    #     print ''
+    #     print ';'
     #     for jdx in range(no_qubits):
     #         print Q3[(idx, jdx)],
 
@@ -286,6 +262,8 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
         for jdx in range(no_qubits):
             Q_final[(idx, jdx)] = Q1[(idx, jdx)] + Q2[(idx, jdx)] + Q3[(idx, jdx)]
             #print Q_final[(idx, jdx)],
+
+    Q_final_exp_energy = Q1_expected_energy + Q2_expected_energy
 
     # This didn't seem to work, perhaps poor implementation
     # REMOVE DEGENERATE SPIN
@@ -346,6 +324,8 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
     # adding degeneracy back in
     # deg = [1] + [-1]*(no_part-1)
     # answers['solutions'] = [deg + sol for sol in answers['solutions']]
+    exp_energy = Q_final_exp_energy
+    answers['energies'] = [ener + exp_energy for ener in answers['energies']]
 
     # Creating Pymetis style node output based on optimal solution
     opt_sol = answers['solutions'][0]
@@ -388,13 +368,16 @@ def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_so
     answers['QC_exp_en'] = 0
 
     answers['Q'] = Q_final
-    answers['Q_exp_en'] = Q1_expected_energy + Q2_expected_energy
+    answers['Q_exp_en'] = Q_final_exp_energy
     #answers['Qdeg'] = Q_deg
 
     return answers
 
 
-def partition(adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
+def partition(adjlist,
+              solver_type = None,
+              dwave_solver = None,
+              isakov_address = None):
     """
 
     Partition function based on Lucas Hamiltonian. This one can only divide
@@ -522,8 +505,12 @@ def partition(adjlist, solver_type = None, dwave_solver = None, isakov_address =
 
     return answers
 
+
 # needs serious serious serious improvement
-def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
+def recursive_bisection(n, adjlist,
+                        solver_type = None,
+                        dwave_solver = None,
+                        isakov_address = None):
 
     """
     recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
