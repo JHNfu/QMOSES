@@ -172,8 +172,8 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     # C : Attributed to term that minimises edgeboundary
 
     B = 3 # Ensure everyone gets a partition
-    A = 2 # Correct share of nodes
-    C = 1 # Minimise edge boundary
+    A = 1 # Correct share of nodes
+    C = 2 # Minimise edge boundary
 
     print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
 
@@ -209,12 +209,6 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
             # Energy on remaining partitions is lower due to degeneracy
             Q1[(idx,idx)] = (1*A) - 2*no_vert*LoadVector[partdx]*A # 1A for the square terms
 
-            # if partdx == 0:
-            #     # Energy on first partition is higher due to degeneracy
-            #     Q1[(idx,idx)] = 1*A - 2*no_vert*LoadVector[partdx]*A + 2*A # 1A for the square terms
-            # else:
-            #     # Energy on remaining partitions is lower due to degeneracy
-            #     Q1[(idx,idx)] = (1*A) - 2*no_vert*LoadVector[partdx]*A # 1A for the square terms
 
     Q1_expected_energy = 0
     for weighting in LoadVector:
@@ -257,19 +251,6 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
         for jdx in range(no_qubits):
             Q3[(idx, jdx)] = 0
 
-
-    combo = list(combinations(range(0, no_part), 2))
-    #print combo
-    for i, j in edgelist:
-        #print "i %s, j %s" % (i, j)
-        for idx, jdx in combo:
-            if i == 0:
-                Q3_jdx = jdx + (j*no_part)
-                Q3[(Q3_jdx, Q3_jdx)] = 1*C
-            elif j == 0:
-                Q3_idx = idx + (i*no_part)
-                Q3[(Q3_idx, Q3_idx)] = 1*C
-
     for i, j in edgelist:
         #print i, j
         #print "i %s, j %s" % (i, j)
@@ -285,6 +266,7 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
                     Q3_jdx = (j*no_part) + part_i
                     Q3_idx = (i*no_part) + part_j
                     Q3[(Q3_idx, Q3_jdx)] = 1*C
+
     # print edgelist
     # print "Printing Q3"
     # for idx in range(no_qubits):
@@ -300,13 +282,14 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
             Q_final[(idx, jdx)] = Q1[(idx, jdx)] + Q2[(idx, jdx)] + Q3[(idx, jdx)]
             #print Q_final[(idx, jdx)],
 
+    # This didn't seem to work, perhaps poor implementation
     # REMOVE DEGENERATE SPIN
-    Q_deg = dict()
-    for idx in range(no_part, no_vert*no_part):
-        # print ''
-        for jdx in range(no_part, no_vert*no_part):
-            # print '%.f' % (Q[(idx,jdx)]),
-            Q_deg[(idx - no_part,jdx - no_part)] = (Q_final[(idx,jdx)])
+    # Q_deg = dict()
+    # for idx in range(no_part, no_vert*no_part):
+    #     # print ''
+    #     for jdx in range(no_part, no_vert*no_part):
+    #         # print '%.f' % (Q[(idx,jdx)]),
+    #         Q_deg[(idx - no_part,jdx - no_part)] = (Q_final[(idx,jdx)])
 
     # print "\n\nQ with degeneracy:"
     # for idx in range(no_qubits-no_part):
@@ -314,7 +297,7 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     #     for jdx in range(no_qubits-no_part):
     #         print Q_deg[(idx, jdx)],
 
-    (h, J, offset) = dwave_sapi.qubo_to_ising(Q_deg)
+    (h, J, offset) = dwave_sapi.qubo_to_ising(Q_final)
 
     print "Offset", offset
 
@@ -358,8 +341,8 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
         print "Moses Partitioner Error: Solver type not recognised. Try dwave or isakov"
 
     # adding degeneracy back in
-    deg = [1] + [-1]*(no_part-1)
-    answers['solutions'] = [deg + sol for sol in answers['solutions']]
+    # deg = [1] + [-1]*(no_part-1)
+    # answers['solutions'] = [deg + sol for sol in answers['solutions']]
 
     # Creating Pymetis style node output based on optimal solution
     opt_sol = answers['solutions'][0]
@@ -394,7 +377,9 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     answers['C'] = C
 
     answers['QA'] = Q1
-    answers['QA_exp_en'] = Q1_expected_energy
+    # using round, cause sometimes due to funky LoadVectors it yields
+    # a near zero result, lke e-19. Nobody got time for that.
+    answers['QA_exp_en'] = round(Q1_expected_energy,2)
 
     answers['QB'] = Q2
     answers['QB_exp_en'] = Q2_expected_energy
@@ -404,7 +389,7 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
 
     answers['Q'] = Q_final
     answers['Q_exp_en'] = Q1_expected_energy + Q2_expected_energy
-    answers['Qdeg'] = Q_deg
+    #answers['Qdeg'] = Q_deg
 
     return answers
 
