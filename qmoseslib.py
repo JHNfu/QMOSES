@@ -59,7 +59,7 @@ from six.moves import range
 ##############################################################################
 
 
-def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
+def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
     """
 
     In hours of attempts to ensure, mosespartitioner was written correctly,
@@ -106,6 +106,8 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     :param isakov_address: solver address e.g., '= r"C:..........'
     :return: well, quite a lot really.
     """
+
+    print "Running MOSES Partitioner..."
 
     no_vert = len(adjlist)
     no_qubits = no_vert*no_part
@@ -165,7 +167,6 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     # MESH PARTITIONING HAMILTONIAN HARD-CODE
     edgelist = adjlist_to_edgelist(adjlist)
     no_edges = len(edgelist)
-    print 'Number of edges', no_edges
     graph = nx.Graph()
     graph.add_edges_from(edgelist)
     graph.add_nodes_from(range(len(adjlist)))
@@ -303,8 +304,6 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
 
     (h, J, offset) = dwave_sapi.qubo_to_ising(Q_final)
 
-    print "Offset", offset
-
     num_reads = 1000
 
     if solver_type == 'dwave':
@@ -350,7 +349,6 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
 
     # Creating Pymetis style node output based on optimal solution
     opt_sol = answers['solutions'][0]
-    print "Optimal Solution", opt_sol
 
     final_solution = []
     incorrect = 0
@@ -367,8 +365,6 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
         else:
             final_solution.append(0)
             incorrect += 1
-
-    print "Final_Solution", final_solution
 
     answers['nodelist'] = final_solution
     answers['adjlist'] = adjlist
@@ -394,231 +390,6 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     answers['Q'] = Q_final
     answers['Q_exp_en'] = Q1_expected_energy + Q2_expected_energy
     #answers['Qdeg'] = Q_deg
-
-    return answers
-
-
-def mosespartitioner(no_part, adjlist, load = None, solver_type = None, dwave_solver = None, isakov_address = None):
-    """
-
-    Moses Partitioner: implementation of the flagship Hamiltonian for this
-    library of impeccable functions.
-    Moses partitioner can do a  lot, you know? Partition into a positive
-    integer number of parts, which is real handy. Additionally it can be used
-    for Load Balancing on heterogeneous systems.
-
-    Requires (Num_Partitions - 1) * Num_Elements fully connected qubits.
-
-    :param no_part: number of partitions
-    :param adjlist: adjacency list
-    :param load: load vector consisting of Num_Partitions elements and summing
-    to one
-    :param solver_type: string or 'isakov' or 'dwave'
-    :param dwave_solver: solver class, local connection etc
-    :param isakov_address: solver address e.g., '= r"C:..........'
-    :return: well, quite a lot really.
-    """
-
-    no_vert = len(adjlist)
-
-    print 'Number of Elements', no_vert
-
-    #### adjust load vector so that one partition yields an extra node
-    if no_vert % no_part == 1 and load == None:
-
-        # adjust load vector so that one partition yields an extra node
-
-        LoadVector = [i * (no_vert+1)/(no_vert*no_part) for i in [1]*(no_part-1)]
-        LoadVector.append(1 - sum(LoadVector))
-
-    elif load == None:
-        LoadVector = [i * (1/no_part) for i in [1]*no_part]
-        print 'Assuming homogenous system...'
-
-    elif len(load) == no_part and sum(load) == 1:
-        print 'Partitioning heterogenous system...'
-        LoadVector = load
-        print 'Load Vector:', LoadVector
-
-    else:
-        print 'Moses Partitioner Error: Load Vector is incorrect type.' \
-              '\t Load Vector should be a list of length(no. of partitions) and sum to 1.'
-
-    print 'LoadVector:', LoadVector
-
-    # MESH PARTITIONING HAMILTONIAN HARD-CODE
-    edgelist = adjlist_to_edgelist(adjlist)
-    no_edges = len(edgelist)
-    print 'Number of edges', no_edges
-    graph = nx.Graph()
-    graph.add_edges_from(edgelist)
-    graph.add_nodes_from(range(len(adjlist)))
-
-    # for larger mesh
-    A = 0.5*no_edges # Ensure everyone gets a partition
-    B = 1 # Correct share of nodes
-    C = 1 # Minimise edge boundary
-
-    # A: Ensure everyone gets a partition
-    # B: Correct share of nodes
-    # C: Minimise edge boundary
-
-    # Following coefficients worked superbly on small graphs
-    # A = 0.5*no_edges # ensures each has a partition
-    # B = 1 # ensures equal nodes
-    # C = 1 # ensures edge bondary minimised.
-
-    # # Following coefficients worked superbly on small graphs
-    # A = 0.5*no_edges # ensures each has a partition
-    # B = 1 # ensures equal nodes
-    # C = 0.1*no_vert  # ensures edge bondary minimised.
-
-    # # Following coefficients worked superbly on small graphs
-    # A = 0.5*no_edges # ensures each has a partition
-    # B = 1 # ensures equal nodes
-    # C = 0.3*no_vert  # ensures edge bondary minimised.
-
-    print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
-
-    Q_HC = dict()
-    for idx in range(no_part*no_vert):
-        for jdx in range(no_part*no_vert):
-            Q_HC[(idx, jdx)] = 0
-
-    for idx in range(no_vert):
-        for jdx in range(no_vert):
-            for print_idx in range(idx*no_part,idx*no_part + no_part):
-                # print ' '
-                for print_jdx in range(jdx*no_part,jdx*no_part + no_part):
-                    if (idx, jdx) in edgelist:
-                        Q_HC[(print_idx, print_jdx)] = C
-                    # print print_idx, print_jdx, idx*no_part, jdx*no_part
-                    if (print_idx - idx*no_part) == (print_jdx - jdx*no_part):
-                        Q_HC[(print_idx, print_jdx)] = 2*B
-                    elif print_idx - idx*no_part == print_jdx:
-                        Q_HC[(print_idx, print_jdx)] = 2*B
-
-    # WRITING EACH NODE * NO_PART
-    for node_dx in range(no_vert):
-        for idx in range(node_dx*no_part,node_dx*no_part + no_part):
-            # print ' '
-            #print idx, jdx
-            for part, jdx in enumerate(range(node_dx*no_part,node_dx*no_part + no_part)):
-                if idx == jdx and part == (no_part - 1):
-                    #Q_HC[(idx,jdx)] = -A - (2*no_vert*LoadVector[0]*B/no_part) + B
-                    Q_HC[(idx,jdx)] = -A - (2*no_vert*LoadVector[0]*B) + B
-                    # print Q_HC[(idx,jdx)],
-                elif idx == jdx and part != (no_part - 1):
-                    #Q_HC[(idx,jdx)] = -A - (2*no_vert*LoadVector[part]*B/no_part) + B
-                    Q_HC[(idx,jdx)] = -A - (2*no_vert*LoadVector[part]*B) + B
-                else:
-                    Q_HC[(idx,jdx)] = 2*A
-                    #print 'else', Q_HC[(idx,jdx)]
-                    # print Q_HC[(idx,jdx)],
-
-    # A LIL FIXER FOR DEGENERACY
-    for node_dx in range(no_vert):
-        for idx in range(node_dx*no_part,node_dx*no_part + 1):
-            # print ' '
-            for jdx in range(node_dx*no_part,node_dx*no_part + 1):
-                if idx == jdx:
-                    # Q_HC[(idx,jdx)] = -A - ((len(edgelist)/no_part)-1)*B
-                    Q_HC[(idx,jdx)] += 2*B
-                    # print Q_HC[(idx,jdx)],
-                    #print 'D', idx, jdx, Q_HC[(idx,jdx)]
-
-    # print 'Printing Q HARDCODE:'
-    # for idx in range(no_part*no_vert):
-    #     print ' '
-    #     for jdx in range(no_part*no_vert):
-    #         print Q_HC[(idx,jdx)],
-
-    # Setting up Q accounting for degeneracy
-    #print '\nQ:'
-    Qdeg = dict()
-    for idx in range(no_part, no_vert*no_part):
-        # print ''
-        for jdx in range(no_part, no_vert*no_part):
-            # print '%.f' % (Q[(idx,jdx)]),
-            Qdeg[(idx - no_part,jdx - no_part)] = (Q_HC[(idx,jdx)])
-
-    (h, J, offset) = dwave_sapi.qubo_to_ising(Qdeg)
-
-    num_reads = 1000
-
-    if solver_type == 'dwave':
-        qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
-        q_size = dwave_solver.properties["num_qubits"]
-
-        # Using the D-Wave API heuristic to find an embedding on the Chimera graph for the problem
-        embeddings = dwave_sapi.find_embedding(J, len(h), qubits, q_size)
-
-        # Sending problem to the solver
-        embedding_solver = dwave_sapi.EmbeddingSolver(dwave_solver, embeddings)
-        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
-        sols = answers['solutions']
-
-        t0 = time.time()
-        answers = embedding_solver.solve_ising(h, J, num_reads = num_reads)
-        t1 = time.time()
-        answers['timing'] = t1 - t0
-
-        answers['num_reads'] = num_reads
-
-        # adding offset from Q to h, J conversion back to energies
-        answers['energies'] = [energy + offset for energy in answers['energies']]
-        answers['hvalues'] = h
-        answers['jvalues'] = J
-        answers['offset'] = offset
-
-    elif solver_type == 'isakov':
-
-        answers = isakovlib.solve_Ising(h, J, offset = offset)
-
-        # adding degeneracy
-        negative = '-'
-        deg_plusminus = '+' + negative*(no_part-1)
-        answers['plusminus'] = [deg_plusminus + sol for sol in answers['plusminus']]
-
-    else:
-        print "Moses Partitioner Error: Solver type not recognised. Try dwave or isakov"
-
-    # adding degeneracy back in
-    deg = [1] + [-1]*(no_part-1)
-    answers['solutions'] = [deg + sol for sol in answers['solutions']]
-
-    # Creating Pymetis style node output based on optimal solution
-    opt_sol = answers['solutions'][0]
-    print "Optimal Solution", opt_sol
-
-    final_solution = []
-    incorrect = 0
-    for nodes in range(no_vert):
-        colour_sols = []
-        for idx in range(nodes*no_part,(nodes*no_part)+no_part):
-            colour_sols.append(opt_sol[idx])
-
-        if sum(colour_sols) == (no_part*-1)+2:
-            for idx in range(nodes*no_part,(nodes*no_part)+no_part):
-                if opt_sol[idx] == 1:
-                    final_solution.append(idx - nodes*no_part + 1)
-                    # print final_solution
-        else:
-            final_solution.append(0)
-            incorrect += 1
-
-    print "Final_Solution", final_solution
-
-    answers['nodelist'] = final_solution
-    answers['adjlist'] = adjlist
-    answers['num_parts'] = no_part
-    answers['load_vector'] = LoadVector
-    answers['solver'] = solver_type
-    answers['Q'] = Q_HC
-    answers['Qdeg'] = Qdeg
-    answers['A'] = A
-    answers['B'] = B
-    answers['C'] = C
 
     return answers
 
@@ -2118,8 +1889,6 @@ def generate_AirfoilMesh():
                     (0.0250, -0.0227), (0.0500, -0.0301), (0.0750, -0.0346),(0.1000, -0.0375),(0.1500, -0.0410),(0.2, -0.0423),(0.2500, -0.0422),(0.3, -0.0412),(0.4, -0.0380),
                     (0.5, -0.0334),(0.6, -0.0276),(0.7, -0.0214),(0.9, -0.0082),(0.95, -0.0048),(1, 0)]
 
-    print points_inner
-
     new_tup = []
     for tup in points_inner:
         tupzero = tup[0]*3 - 1.5
@@ -2154,16 +1923,57 @@ def generate_AirfoilMesh():
     #mesh = triangle.build(meshinfo)
 
     mesh_points = np.array(mesh.points)
+    mesh_points_list = mesh_points.tolist()
+
     mesh_tris = np.array(mesh.elements)
     mesh_tris_list = mesh_tris.tolist()
 
+    def find_ElementCentres(mesh, mesh_tris_list, mesh_points_list):
+        '''
+
+        Finds element geometric centre from meshpy triangular mesh
+        and returns networkx position class.
+
+        :param mesh:
+        :param mesh_tris_list:
+        :param mesh_points_list:
+        :return: position
+        '''
+
+        x = []
+        y = []
+        for idx in range(len(mesh.points)):
+            x.append(mesh.points[idx,0])
+            y.append(mesh.points[idx,1])
+
+        x = np.array(x)
+        y = np.array(y)
+
+        element_centres = []
+        position = dict()
+        for element_no, element in enumerate(mesh_tris_list):
+            element_x = 0
+            element_y = 0
+            for node in element:
+                element_x += mesh_points_list[node][0]
+                element_y += mesh_points_list[node][1]
+            element_centres.append([element_x/3, element_y/3])
+            position[element_no] = np.array([element_x/3, element_y/3])
+
+        return position
+
+    position = find_ElementCentres(mesh, mesh_tris_list, mesh_points_list)
+
     output = dict()
     output['mesh_points'] = mesh_points
+    output['mesh_points_list'] = mesh_points_list
     output['mesh_tris'] = mesh_tris
     output['mesh_tris_list'] = mesh_tris_list
     output['mesh'] = mesh
 
     adjlist = meshpytrielements_to_adjlist(mesh_tris_list)
     output['adjlist'] = adjlist
+
+    output['position'] = position
 
     return output
