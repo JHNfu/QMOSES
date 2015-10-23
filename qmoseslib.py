@@ -112,9 +112,37 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     if no_vert % no_part == 1 and load == None:
 
         # adjust load vector so that one partition yields an extra node
+        # this is to ensure equal node share term is zero
 
-        LoadVector = [i * (no_vert+1)/(no_vert*no_part) for i in [1]*(no_part-1)]
-        LoadVector.append(1 - sum(LoadVector))
+        Bal_1 = (no_vert - 1)/no_part
+        Expected_Balance = [Bal_1]*no_part
+        Expected_Balance[0] = Bal_1 + 1
+
+        LoadVector = [x / no_vert for x in Expected_Balance]
+
+        print 'Load Vector "slight adjustment" has occurred.\n' \
+              'This is to ensure node sharing term equals zero for a balance' \
+              'that can not have equal nodes. ie. 10 into 3-part, optimally yields' \
+              'balance result [3,3,4]' \
+
+    elif no_vert % no_part != 0 and load == None:
+
+        # adjust load vector so that one partition yields one less node
+        # this is to ensure equal node share term is zero
+        modulo = no_vert % no_part
+
+        Bal_1 = (no_vert - modulo)/no_part
+
+        Expected_Balance = [Bal_1]*no_part
+
+        for idx in range(modulo):
+            Expected_Balance[idx] += 1
+
+        LoadVector = [x / no_vert for x in Expected_Balance]
+
+        print 'Load Vector "slight adjustment" has occurred.\n' \
+            'This is to ensure node sharing term equals zero for a balance' \
+            'that can not have equal nodes.'
 
     elif load == None:
         LoadVector = [i * (1/no_part) for i in [1]*no_part]
@@ -123,7 +151,6 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     elif len(load) == no_part and sum(load) == 1:
         print 'Partitioning heterogenous system...'
         LoadVector = load
-        print 'Load Vector:', LoadVector
 
     else:
         print 'Moses Partitioner Error: Load Vector is incorrect type.' \
@@ -144,8 +171,8 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     # B : Attributed to term that ensures one in every element
     # C : Attributed to term that minimises edgeboundary
 
-    B = 2 # Ensure everyone gets a partition
-    A = 1 # Correct share of nodes
+    B = 3 # Ensure everyone gets a partition
+    A = 2 # Correct share of nodes
     C = 1 # Minimise edge boundary
 
     print 'Moses Partitioner Coefficients: A = %s, B = %s, C = %s' % (A, B, C)
@@ -171,7 +198,7 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
                 jdx = (vert_ydx * no_part) + partdx
                 idx = (vert_xdx * no_part) + partdx
                 if idx > jdx:
-                    Q1[(jdx,idx)] = 2*A
+                    Q1[(jdx, idx)] = 2*A
 
     # The diagonals
     for vertdx in range(no_vert):
@@ -179,20 +206,26 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
 
             idx = (vertdx*no_part) + partdx
 
-            if partdx == 0:
-                # Energy on first partition is higher due to degeneracy
-                Q1[(idx,idx)] = 1*A - 2*no_vert*LoadVector[partdx]*A + 2*A # 1A for the square terms
-            else:
-                # Energy on remaining partitions is lower due to degeneracy
-                Q1[(idx,idx)] = (1*A) - 2*no_vert*LoadVector[partdx]*A # 1A for the square terms
+            # Energy on remaining partitions is lower due to degeneracy
+            Q1[(idx,idx)] = (1*A) - 2*no_vert*LoadVector[partdx]*A # 1A for the square terms
+
+            # if partdx == 0:
+            #     # Energy on first partition is higher due to degeneracy
+            #     Q1[(idx,idx)] = 1*A - 2*no_vert*LoadVector[partdx]*A + 2*A # 1A for the square terms
+            # else:
+            #     # Energy on remaining partitions is lower due to degeneracy
+            #     Q1[(idx,idx)] = (1*A) - 2*no_vert*LoadVector[partdx]*A # 1A for the square terms
+
+    Q1_expected_energy = 0
+    for weighting in LoadVector:
+        Q1_expected_energy += weighting ** 2
+    Q1_expected_energy = Q1_expected_energy*(no_vert ** 2)*A
 
     # print "TERM 1 EVEN NODE SHARE:"
     # for idx in range(no_qubits):
-    #     print ' '
+    #     print ';'
     #     for jdx in range(no_qubits):
     #         print Q1[(idx, jdx)],
-
-    print "\n"
 
     # TERM 2: ENSURE EVERY NODE GETS A PARTITION
     Q2 = dict()
@@ -210,6 +243,8 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
         for Q2_key in list(combinations(range(vertdx*no_part, (vertdx+1)*no_part), 2)):
                 Q2[Q2_key] = 2*B
 
+    Q2_expected_energy = no_vert*B
+
     # print "Printing Q2: everynode gets a partition"
     # for idx in range(no_qubits):
     #     print ''
@@ -224,7 +259,7 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
 
 
     combo = list(combinations(range(0, no_part), 2))
-    print combo
+    #print combo
     for i, j in edgelist:
         #print "i %s, j %s" % (i, j)
         for idx, jdx in combo:
@@ -236,7 +271,7 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
                 Q3[(Q3_idx, Q3_idx)] = 1*C
 
     for i, j in edgelist:
-        print i, j
+        #print i, j
         #print "i %s, j %s" % (i, j)
         if j > i:
             for part_i in range(no_part):
@@ -260,10 +295,10 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     # BRINGIN' IT ALL TOGETHER
     Q_final = dict()
     for idx in range(no_qubits):
-        print ''
+        #print ''
         for jdx in range(no_qubits):
             Q_final[(idx, jdx)] = Q1[(idx, jdx)] + Q2[(idx, jdx)] + Q3[(idx, jdx)]
-            print Q_final[(idx, jdx)],
+            #print Q_final[(idx, jdx)],
 
     # REMOVE DEGENERATE SPIN
     Q_deg = dict()
@@ -280,6 +315,8 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     #         print Q_deg[(idx, jdx)],
 
     (h, J, offset) = dwave_sapi.qubo_to_ising(Q_deg)
+
+    print "Offset", offset
 
     num_reads = 1000
 
@@ -351,11 +388,23 @@ def mosespartitioner_crossgrade(no_part, adjlist, load = None, solver_type = Non
     answers['num_parts'] = no_part
     answers['load_vector'] = LoadVector
     answers['solver'] = solver_type
-    answers['Q'] = Q
-    answers['Qdeg'] = Q_deg
+
     answers['A'] = A
     answers['B'] = B
     answers['C'] = C
+
+    answers['QA'] = Q1
+    answers['QA_exp_en'] = Q1_expected_energy
+
+    answers['QB'] = Q2
+    answers['QB_exp_en'] = Q2_expected_energy
+
+    answers['QC'] = Q3
+    answers['QC_exp_en'] = 0
+
+    answers['Q'] = Q_final
+    answers['Q_exp_en'] = Q1_expected_energy + Q2_expected_energy
+    answers['Qdeg'] = Q_deg
 
     return answers
 
@@ -609,7 +658,10 @@ def partition(adjlist, solver_type = None, dwave_solver = None, isakov_address =
     test_size = num_vertices
 
     # Calculating A, assuming B = 1, ensuring a minimum of 1
+    # A = 1
     A = max(min(2*max_degree, num_vertices) / 8.0, 1)
+    B = 1
+
 
     # Number of Qubits Required
     num_qubits = test_size - 1 # Minus 1 for degeneracy
@@ -632,11 +684,11 @@ def partition(adjlist, solver_type = None, dwave_solver = None, isakov_address =
     # Set up the existing connections to have a value of 1.5
     for i,j in edgelist:
         if i == num_qubits:
-            h[j] = 2*A-0.5 # For degeneracy
+            h[j] = (2*A)-(0.5*B) # For degeneracy
         elif j == num_qubits:
-            h[i] = 2*A-0.5 # For degeneracy
+            h[i] = (2*A)-(0.5*B) # For degeneracy
         else:
-            J[(i, j)] = 2*A-0.5
+            J[(i, j)] = 2*A-(0.5*B)
 
     # Fill in the Zeros
     for i in range(len(h)):
@@ -712,6 +764,7 @@ def partition(adjlist, solver_type = None, dwave_solver = None, isakov_address =
 
 # needs serious serious serious improvement
 def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
+
     """
     recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isakov_address = None):
     A recursive bisection algorithm based on function partition for 2^N
@@ -729,6 +782,7 @@ def recursive_bisection(n, adjlist, solver_type = None, dwave_solver = None, isa
     :param isakov_address:
     :return:
     """
+
     global output
     global nodes_orig1
 
@@ -1537,6 +1591,7 @@ def split_nodelist_fromnodes(opt_sol,nodes_orig):
 
     return [part_AA_nodes, part_BB_nodes]
 
+
 # needs improvement
 def reduce_adjlist(nodes,adjlist):
 
@@ -1575,6 +1630,7 @@ def reduce_adjlist(nodes,adjlist):
             k += 1
         i += 1
     return adjlistReturn
+
 
 # needs improvement
 def enlarge_adjlist(nodes,adjlist):
@@ -1653,6 +1709,7 @@ def qmosesnodelist_to_pymetisoutput(nodes_list):
             output[element] = part_num + 1
 
     return output
+
 
 # needs improvement
 def meshpytrielements_to_adjlist(meshpy_elements):
@@ -1752,10 +1809,7 @@ def normalise_weightings(h, J, offset):
 # FUNCTIONS FOR RESULTS ANALYSES
 ##############################################################################
 
-# needs significant improvement
-# it's likely this doesn't even output the correct results
-# also need to ensure it works for moses partition whereby partitions are
-# not actually allocated
+
 def edge_resultsanalysis(list_of_lists_of_nodes,edgelist, num_parts):
 
     """
@@ -1886,9 +1940,75 @@ def energy_from_solution(h, J, opt_sol, offset = None):
 
     return total_energy
 
+
+def qubo_energy_from_solution(Q, quboSpinSol):
+    '''
+
+    Calculates QUBO Energy from Q dictionary and qubo spin solution.
+    E = xQx', also determines if upper or lower triangular matrix
+    or if input is Ising solution
+
+    :param Q:
+    :param quboSpinSol:
+    :return: Energy
+    '''
+
+    # checking if actually Ising solution
+    if -1 in quboSpinSol:
+        #This looks like an Ising solution! Converting to QUBO solution
+        quboSpinSol = isingSol_to_quboSol(quboSpinSol)
+
+    # checking if upper or lower triangular
+    # assuming upper triangular
+    energy_multiplier = 1
+    for idx, jdx in Q.keys():
+        if idx == jdx or Q[(idx,jdx)] == 0:
+            pass
+        elif Q[(idx,jdx)] == Q[(jdx,idx)]:
+            # matrix is symmetric
+            energy_multiplier = 2
+
+    Energy_Sum = 0
+    for idx, jdx in Q.keys():
+        if idx == jdx:
+            Energy_Sum += Q[(idx, jdx)]*quboSpinSol[idx]
+        else:
+            Energy_Sum += Q[(idx, jdx)]*quboSpinSol[idx]*quboSpinSol[jdx]
+
+    energy = Energy_Sum*energy_multiplier
+
+    return energy
+
+
+def isingSol_to_quboSol(IsingSpinSol):
+
+    QUBOSpinSol = []
+
+    for idx, spin in enumerate(IsingSpinSol):
+        if spin == -1:
+            QUBOSpinSol.append(0)
+        elif spin ==1:
+            QUBOSpinSol.append(1)
+
+    return QUBOSpinSol
+
+
+def generate_RandomSol(no_part, no_elements):
+    '''
+
+    Allocated elements into random partitions to yield random useless solution.
+
+    :param no_part:
+    :param no_elements:
+    :return:
+    '''
+    return [randint(1, no_part) for p in range(0, no_elements)]
+
+
 ##############################################################################
 # MISC FUNCTIONS - ATTEMPTS AT OTHER THINGS
 ##############################################################################
+
 
 def colourgraph(no_col,adjlist):
     '''
@@ -1971,9 +2091,9 @@ def colourgraph(no_col,adjlist):
     # THE FINAL Q
     Q_final = dict()
     for idx in range(no_qubits):
-        print ''
+        #print ''
         for jdx in range(no_qubits):
             Q_final[(idx, jdx)] = Q1[(idx, jdx)] + Q2[(idx, jdx)]
-            print Q_final[(idx, jdx)],
+            #print Q_final[(idx, jdx)],
 
     return Q_final
