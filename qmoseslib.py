@@ -42,6 +42,7 @@ import networkx as nx
 from networkx.algorithms import bipartite
 import numpy as np
 import nxmetis
+import matplotlib.pyplot as plt
 import dwave_sapi
 import time
 from dwave_sapi import local_connection, find_embedding
@@ -60,7 +61,8 @@ from six.moves import range         # \    /
 
 def mosespartitioner(no_part, adjlist, A = 1, B = 3, C = 2,
                      load = None, solver_type = None,
-                     dwave_solver = None, isakov_address = None):
+                     dwave_solver = None, isakov_address = None,
+                     num_reads = 1000):
     """
 
     Continuation of previous description..
@@ -282,8 +284,6 @@ def mosespartitioner(no_part, adjlist, A = 1, B = 3, C = 2,
 
     (h, J, offset) = dwave_sapi.qubo_to_ising(Q_final)
 
-    num_reads = 1000
-
     if solver_type == 'dwave':
         qubits = dwave_sapi.get_hardware_adjacency(dwave_solver)
         q_size = dwave_solver.properties["num_qubits"]
@@ -311,7 +311,8 @@ def mosespartitioner(no_part, adjlist, A = 1, B = 3, C = 2,
 
     elif solver_type == 'isakov':
 
-        answers = isakovlib.solve_Ising(h, J, offset = offset)
+        answers = isakovlib.solve_Ising(h, J,
+                                        offset = offset, num_reads = num_reads)
 
         # adding degeneracy
         negative = '-'
@@ -324,6 +325,7 @@ def mosespartitioner(no_part, adjlist, A = 1, B = 3, C = 2,
     # adding degeneracy back in
     # deg = [1] + [-1]*(no_part-1)
     # answers['solutions'] = [deg + sol for sol in answers['solutions']]
+
     exp_energy = Q_final_exp_energy
     answers['energies'] = [ener + exp_energy for ener in answers['energies']]
 
@@ -1552,6 +1554,7 @@ def normalise_weightings(h, J, offset):
 
     return h, J, offset
 
+
 ##############################################################################
 # FUNCTIONS FOR RESULTS ANALYSES
 ##############################################################################
@@ -1617,13 +1620,15 @@ def edge_resultsanalysis(list_of_lists_of_nodes,edgelist, num_parts):
     return (edges_between, edges_each, total_edges)
 
 
-def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
+def num_nodes_per_part(list_of_lists_of_nodes,num_parts, load = None):
 
     """
     (result, variance) = num_nodes_per_part(list_of_lists_of_nodes,num_parts)
 
     Function for analysing the balance of nodes in a partition in a
     mesh/graph partitioning problem.
+
+    Function will also normalise for a heterogeneous load vector.
 
     Args:
         list of lists of nodes: which nodes are in each partition.
@@ -1647,6 +1652,18 @@ def num_nodes_per_part(list_of_lists_of_nodes,num_parts):
         result_list.append(len(list_of_lists_of_nodes[part_1]))
 
     variance = var(result_list)
+
+    normalised_results_list = [0]*num_parts
+    if load != None:
+
+        sort_result_list = sorted(result_list, key=int)
+        load = sorted(load, key=float)
+
+        for idx, weighting in enumerate(load):
+            normalised_results_list[idx] = sort_result_list[idx] / weighting
+        variance = var(normalised_results_list)
+
+        print "Note, node balance variance has been normalised."
 
     return [result_list, variance]
 
@@ -1751,6 +1768,70 @@ def generate_RandomSol(no_part, no_elements):
     '''
     return [randint(1, no_part) for p in range(0, no_elements)]
 
+##############################################################################
+# For analysis of time-to-target metric
+##############################################################################
+
+def plot_InvCdf(dw_energies, dw_num_occurrences, dw_num_anneals):
+    '''
+
+    For analysis of time-to-target metric
+
+    Plots the Inverse Cumulative Distribution Function of the sample energy
+    distribution of the hardware used.
+
+    Vertical lines indicate quantiles used to define target energies.
+
+    Run plt.show() after function!
+
+    e.g, fig = plot_InvCdf(dw_energies, dw_num_occurrences, dw_num_anneals)
+         plt.show()
+
+    :param energies: As collected from DWave solver
+    :param num_occurrences: As collected from DWave solver
+    :param num_anneals: As collected from DWave solver
+    :return: pyplot fig
+    '''
+
+    # printing all energies in ascending order including num_occurences
+    List_of_Energies = []
+    for idx, energy in enumerate(dw_energies):
+        for jdx in range(dw_num_occurrences[idx]):
+            List_of_Energies.append(energy)
+
+    step = 1 / dw_num_anneals
+
+    def frange(x, y, jump):
+      while x < y:
+        yield x
+        x += jump
+
+    sample_quantile_xaxis = []
+    for idx in frange(step, 1+step, step):
+        sample_quantile_xaxis.append(idx)
+
+    fig = plt.figure()
+    # plotting Inverse CDF of sample energy distribution of the hardware
+    plt.plot(sample_quantile_xaxis, List_of_Energies, "k|")
+    plt.title('Inverse ')
+    plt.xscale('log')
+    plt.xlabel('Sample Quantile, Anneals = %s' % len(List_of_Energies))
+    plt.ylabel('Energy')
+
+    # plotting vertical lines
+    energy_mean = sum(List_of_Energies) / float(dw_num_anneals)
+
+    # plotting q values
+    font = 15
+    powers_of_10 = int(np.log10(dw_num_anneals))
+    for idx in range(powers_of_10):
+        q = 0.1 * (0.1 ** idx)
+        plt.axvline(q, c='k', linestyle='--')
+        plt.text(q, energy_mean, 'q = %s' % q, rotation=90,
+                 fontsize=font, family='serif',
+                 multialignment='left')
+
+    return fig
 
 ##############################################################################
 # MISC FUNCTIONS - ATTEMPTS AT OTHER THINGS
